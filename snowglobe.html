@@ -98,20 +98,14 @@
         <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMax meet">
           <ellipse cx="100" cy="176" rx="78" ry="16" fill="#eef6ff"/>
           <ellipse cx="100" cy="172" rx="66" ry="12" fill="#ffffff"/>
-          <rect x="95" y="150" width="10" height="16" rx="2" fill="#6b421c"/>
-          <polygon points="100,52 138,102 62,102" fill="#1d6b34"/>
-          <polygon points="100,72 146,126 54,126" fill="#22803d"/>
-          <polygon points="100,94 154,152 46,152" fill="#2a9448"/>
-          <polygon points="100,38 104,48 114,49 106,56 109,66 100,60 91,66 94,56 86,49 96,48" fill="#ffd75e"/>
-          <g fill="#ff5d5d"><circle cx="86" cy="98" r="3"/><circle cx="118" cy="122" r="3"/><circle cx="76" cy="146" r="3"/></g>
-          <g fill="#ffd75e"><circle cx="108" cy="96" r="3"/><circle cx="88" cy="124" r="3"/><circle cx="126" cy="146" r="3"/></g>
-          <g fill="#7ec8ff"><circle cx="98" cy="112" r="3"/><circle cx="66" cy="148" r="3"/><circle cx="110" cy="148" r="3"/></g>
+
           <circle cx="152" cy="160" r="9" fill="#ffffff"/><circle cx="152" cy="148" r="6.5" fill="#ffffff"/>
           <circle cx="150" cy="147" r="1" fill="#333"/><circle cx="154" cy="147" r="1" fill="#333"/>
           <polygon points="152,149 158,150 152,151.5" fill="#ff8c42"/>
           <rect x="36" y="158" width="16" height="13" rx="2" fill="#c0392b"/><rect x="42.5" y="158" width="3" height="13" fill="#ffd75e"/>
           <rect x="36" y="163" width="16" height="3" fill="#ffd75e"/>
         </svg>
+        <canvas id="treecv"></canvas>
         <canvas id="snow"></canvas>
       </div>
       <div class="glare"></div>
@@ -127,7 +121,95 @@
 (function(){
   var ball=document.getElementById('ball'), cv=document.getElementById('snow'), ctx=cv.getContext('2d');
   var W=0,H=0,CX=0,CY=0,R=0, flakes=[], boost=0;
-  function size(){ var r=ball.getBoundingClientRect(); W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height); CX=W/2; CY=H/2; R=W/2; }
+  var tcv=document.getElementById('treecv'), tctx=tcv.getContext('2d');
+  function size(){ var r=ball.getBoundingClientRect(); W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height); CX=W/2; CY=H/2; R=W/2; tcv.width=W; tcv.height=H; drawTree(); }
+  // ---- 程序化真实感圣诞树（借鉴 atelier：针叶位移+明暗噪声+雪边+螺旋灯+暖光）----
+  function drawTree(){
+    tctx.clearRect(0,0,W,H);
+    var cx=W/2, baseY=H*0.865, treeH=H*0.60, layers=5;
+    // 暖光晕
+    var g0=tctx.createRadialGradient(cx,baseY-treeH*0.5,4,cx,baseY-treeH*0.5,treeH*0.75);
+    g0.addColorStop(0,'rgba(255,180,90,0.22)'); g0.addColorStop(1,'rgba(255,180,90,0)');
+    tctx.fillStyle=g0; tctx.fillRect(0,0,W,H);
+    // 树干
+    tctx.fillStyle='#5d3a1a'; tctx.fillRect(cx-W*0.018, baseY-treeH*0.10, W*0.036, treeH*0.13);
+    tctx.fillStyle='rgba(0,0,0,0.25)'; tctx.fillRect(cx+W*0.004, baseY-treeH*0.10, W*0.012, treeH*0.13);
+    // 层（底→顶）
+    for(var L=layers-1;L>=0;L--){
+      var t=L/(layers-1);
+      var topY=baseY-treeH*0.10-(1-t)*treeH*0.78-treeH*0.24;
+      var halfW=treeH*0.14+t*treeH*0.30;
+      var lh=treeH*0.34;
+      drawFoliage(cx,topY,halfW,lh,L);
+    }
+    drawStar(cx, baseY-treeH*1.06, treeH*0.075);
+    drawBulbs(cx, baseY, treeH);
+  }
+  function drawFoliage(cx,topY,halfW,lh,seed){
+    var teeth=16;
+    tctx.beginPath(); tctx.moveTo(cx,topY);
+    var i,tt,x,y,jag;
+    for(i=0;i<=teeth;i++){ tt=i/teeth;
+      x=cx+halfW*tt*(0.62+0.38*Math.sin(tt*2.6+seed*1.7));
+      y=topY+lh*tt; jag=(i%2)? lh*0.075:0;
+      tctx.lineTo(x+jag*0.25, y+jag);
+      if(i<teeth) tctx.lineTo(cx+halfW*tt*0.80, y+lh*0.045);
+    }
+    tctx.lineTo(cx, topY+lh*0.92);
+    for(i=teeth;i>=0;i--){ tt=i/teeth;
+      x=cx-halfW*tt*(0.62+0.38*Math.sin(tt*2.6+seed*1.7+0.9));
+      y=topY+lh*tt; jag=(i%2)? lh*0.075:0;
+      tctx.lineTo(x-jag*0.25, y+jag);
+      if(i>0) tctx.lineTo(cx-halfW*tt*0.80, y+lh*0.045);
+    }
+    tctx.closePath();
+    var g=tctx.createLinearGradient(0,topY,0,topY+lh);
+    g.addColorStop(0,'rgb('+(46+seed*5)+','+(128+seed*7)+','+(62+seed*4)+')');
+    g.addColorStop(0.55,'rgb('+(30+seed*4)+','+(92+seed*6)+','+(46+seed*3)+')');
+    g.addColorStop(1,'rgb('+(16+seed*3)+','+(58+seed*5)+','+(30+seed*2)+')');
+    tctx.fillStyle=g; tctx.fill();
+    tctx.save(); tctx.clip();
+    // 明暗噪声斑（模拟顶点色）
+    for(var k=0;k<46;k++){
+      var rx=cx+(Math.random()-0.5)*halfW*1.7, ry=topY+Math.random()*lh;
+      tctx.fillStyle=Math.random()>0.45?'rgba(255,255,255,0.055)':'rgba(0,18,4,0.12)';
+      tctx.beginPath(); tctx.arc(rx,ry,Math.random()*lh*0.09+1.5,0,6.2832); tctx.fill();
+    }
+    // 针叶细纹
+    tctx.strokeStyle='rgba(0,25,6,0.18)'; tctx.lineWidth=1;
+    for(var s2=0;s2<22;s2++){
+      var sy=topY+Math.random()*lh, sx=cx+(Math.random()-0.5)*halfW*1.4;
+      tctx.beginPath(); tctx.moveTo(sx,sy); tctx.lineTo(sx+(Math.random()-0.5)*8, sy+4+Math.random()*5); tctx.stroke();
+    }
+    // 雪顶边
+    tctx.strokeStyle='rgba(255,255,255,0.9)'; tctx.lineWidth=2.2; tctx.lineJoin='round';
+    tctx.beginPath();
+    for(i=0;i<=teeth;i++){ tt=i/teeth;
+      x=cx+halfW*tt*0.86*(i%2?0.94:1); y=topY+lh*tt*0.30+(i%2?2.5:0);
+      if(i===0)tctx.moveTo(x,y); else tctx.lineTo(x,y);
+    }
+    tctx.stroke();
+    tctx.restore();
+  }
+  function drawStar(cx,y,r){
+    tctx.save(); tctx.shadowColor='#ffd75e'; tctx.shadowBlur=20; tctx.fillStyle='#ffd75e';
+    tctx.beginPath();
+    for(var i=0;i<10;i++){ var ang=-Math.PI/2+i*Math.PI/5, rr=(i%2)?r*0.45:r; tctx.lineTo(cx+Math.cos(ang)*rr, y+Math.sin(ang)*rr); }
+    tctx.closePath(); tctx.fill(); tctx.restore();
+  }
+  function drawBulbs(cx,baseY,treeH){
+    var turns=4.4, n=30, cols=['#ff5d5d','#ffd75e','#7ec8ff','#ff9de2'];
+    for(var i=0;i<n;i++){
+      var tt=i/n, ang=tt*turns*6.2832+0.6;
+      var y=baseY-treeH*0.14-tt*treeH*0.80;
+      var rad=treeH*0.30*(1-tt*0.85)*0.82;
+      var x=cx+Math.cos(ang)*rad, depth=Math.sin(ang);
+      if(depth<-0.25) continue;
+      tctx.save(); tctx.shadowColor=cols[i%4]; tctx.shadowBlur=12; tctx.fillStyle=cols[i%4];
+      tctx.globalAlpha=0.55+0.45*Math.max(0,depth);
+      tctx.beginPath(); tctx.arc(x,y,2.4+Math.max(0,depth)*1.4,0,6.2832); tctx.fill(); tctx.restore();
+    }
+  }
   size(); window.addEventListener('resize', size);
   function inCircle(scale){ var a=Math.random()*6.2832, rr=Math.sqrt(Math.random())*R*(scale||0.9); return {x:CX+Math.cos(a)*rr, y:CY+Math.sin(a)*rr}; }
   function newFlake(){ var p=inCircle(0.9); return { x:p.x, y:p.y, r:Math.random()*2.4+0.7, vy:Math.random()*0.5+0.25, ph:Math.random()*6.28, o:Math.random()*0.55+0.35 }; }
