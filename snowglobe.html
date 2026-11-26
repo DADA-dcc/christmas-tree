@@ -60,7 +60,7 @@
   .ball:active { cursor:grabbing; }
   .scene { position:absolute; inset:0; }
   .scene svg { position:absolute; inset:0; width:100%; height:100%; }
-  #treecv, #snow { position:absolute; inset:0; width:100%; height:100%; }
+  #auroracv, #treecv, #snow { position:absolute; inset:0; width:100%; height:100%; }
   .glare {
     position:absolute; top:9%; left:14%; width:34%; height:22%; border-radius:50%;
     background: radial-gradient(ellipse at 40% 40%, rgba(255,255,255,.70), rgba(255,255,255,0) 70%);
@@ -111,9 +111,10 @@
     <div class="ball" id="ball">
       <div class="scene">
         <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMax meet">
-          <ellipse cx="100" cy="178" rx="80" ry="15" fill="#e8f1fb"/>
-          <ellipse cx="100" cy="174" rx="68" ry="11" fill="#ffffff"/>
+          <ellipse id="snow-ground-back" cx="100" cy="178" rx="80" ry="15" fill="#e8f1fb"/>
+          <ellipse id="snow-ground-front" cx="100" cy="174" rx="68" ry="11" fill="#ffffff"/>
         </svg>
+        <canvas id="auroracv"></canvas>
         <canvas id="treecv"></canvas>
         <canvas id="snow"></canvas>
       </div>
@@ -131,12 +132,38 @@
 (function(){
   var ball=document.getElementById('ball'), cv=document.getElementById('snow'), ctx=cv.getContext('2d');
   var W=0,H=0,CX=0,CY=0,R=0, flakes=[], boost=0, lamps=[], accum=0.35, lampMode=0, lastRedraw=0;
-  var chimneys=[], windows=[], smokes=[], snowmanProg=0, snowmanTarget=0, lastTreeAccum=accum;
+  var chimneys=[], windows=[], smokes=[], snowmanProg=0, snowmanTarget=0, hatProg=0, lastTreeAccum=accum;
+  var acv=document.getElementById('auroracv'), actx=acv.getContext('2d');
   var tcv=document.getElementById('treecv'), tctx=tcv.getContext('2d');
+  var treeLayer=document.createElement('canvas'), tlctx=treeLayer.getContext('2d');
+  var groundBack=document.getElementById('snow-ground-back'), groundFront=document.getElementById('snow-ground-front');
+  var skirtPuffs=[], houseSpecs=[], giftSpecs=[], shakeStart=-9999, shakeActive=false;
   var seed=7;
   function rnd(){ seed=(seed*9301+49297)%233280; return seed/233280; }
 
-  function size(){ var r=ball.getBoundingClientRect(); W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height); CX=W/2; CY=H/2; R=W/2; tcv.width=W; tcv.height=H; drawTree(); }
+  function updateGroundSnow(){
+    var ex=Math.max(0,(accum-0.35)/0.65);
+    if(groundBack){
+      groundBack.setAttribute('rx',(80+ex*6).toFixed(2));
+      groundBack.setAttribute('ry',(15+ex*4.5).toFixed(2));
+      groundBack.setAttribute('cy',(178-ex*2.2).toFixed(2));
+    }
+    if(groundFront){
+      groundFront.setAttribute('rx',(68+ex*7).toFixed(2));
+      groundFront.setAttribute('ry',(11+ex*3.8).toFixed(2));
+      groundFront.setAttribute('cy',(174-ex*2.4).toFixed(2));
+    }
+  }
+
+  function size(){
+    var r=ball.getBoundingClientRect();
+    W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height);
+    CX=W/2; CY=H/2; R=W/2;
+    acv.width=W; acv.height=H;
+    tcv.width=W; tcv.height=H;
+    treeLayer.width=W; treeLayer.height=H;
+    drawTree();
+  }
 
   // ========== 照真实照片绘制的圣诞树 ==========
   function drawTree(){
@@ -144,30 +171,35 @@
     lastTreeAccum=accum;
     chimneys.length=0;
     windows.length=0;
-    tctx.clearRect(0,0,W,H);
+    skirtPuffs.length=0;
+    updateGroundSnow();
+    tlctx.clearRect(0,0,W,H);
     var cx=W/2, baseY=H*0.875, treeH=H*0.60;
-    var g0=tctx.createRadialGradient(cx,baseY-treeH*0.45,6,cx,baseY-treeH*0.45,treeH*0.9);
-    g0.addColorStop(0,'rgba(255,238,196,0.32)'); g0.addColorStop(0.5,'rgba(255,212,140,0.13)'); g0.addColorStop(1,'rgba(255,200,120,0)');
-    tctx.fillStyle=g0; tctx.fillRect(0,0,W,H);
-    // 小房子（亮窗）
-    house(cx-treeH*0.56, baseY-treeH*0.005, treeH*0.17);
-    house(cx+treeH*0.55, baseY+treeH*0.01, treeH*0.13);
-    // 白毛绒树裙
-    tctx.fillStyle='#fbfcff';
-    tctx.beginPath(); tctx.ellipse(cx,baseY+treeH*0.015,treeH*0.44,treeH*0.075,0,0,6.2832); tctx.fill();
-    tctx.fillStyle='rgba(255,255,255,0.92)';
-    for(var i=0;i<30;i++){ var a=i/30*6.2832;
-      tctx.beginPath(); tctx.arc(cx+treeH*0.44*Math.cos(a), baseY+treeH*0.015+treeH*0.075*Math.sin(a), 2.5+rnd()*2,0,6.2832); tctx.fill(); }
-    // 礼物堆 8 盒
-    gift(cx-treeH*0.34, baseY-treeH*0.005, treeH*0.14, treeH*0.10, '#a8202a', '#ffd75e');
-    gift(cx-treeH*0.13, baseY+treeH*0.025, treeH*0.17, treeH*0.115,'#c9a227', '#8c1c1c');
-    gift(cx+treeH*0.18, baseY+treeH*0.005, treeH*0.13, treeH*0.095, '#274b8f', '#e8e8e8');
-    gift(cx+treeH*0.03, baseY-treeH*0.05, treeH*0.10, treeH*0.075,'#7a1f2b', '#e8c15a');
-    gift(cx-treeH*0.23, baseY+treeH*0.045, treeH*0.12, treeH*0.085,'#1f6b4a', '#ffd75e');
-    gift(cx+treeH*0.31, baseY+treeH*0.03, treeH*0.11, treeH*0.08, '#8e44ad', '#f5f5f5');
-    gift(cx-treeH*0.02, baseY+treeH*0.055, treeH*0.15, treeH*0.10, '#b03a2e', '#f7dc6f');
-    gift(cx+treeH*0.11, baseY+treeH*0.05, treeH*0.09, treeH*0.07, '#16a085', '#ffd75e');
-    // 浓密锥体 + 挂雪
+    // 小房子参数与烟囱/窗户记录
+    houseSpecs=[
+      {x:cx-treeH*0.56, y:baseY-treeH*0.005, s:treeH*0.17},
+      {x:cx+treeH*0.55, y:baseY+treeH*0.01, s:treeH*0.13}
+    ];
+    for(var hi=0;hi<houseSpecs.length;hi++){
+      var hs=houseSpecs[hi];
+      chimneys.push({x:hs.x+hs.s*0.32, y:hs.y-hs.s*0.98, s:hs.s});
+      var wx1=hs.x-hs.s*0.30, wx2=hs.x+hs.s*0.08, wy=hs.y-hs.s*0.42, ww=hs.s*0.22;
+      windows.push({x:wx1,y:wy,w:ww,h:ww},{x:wx2,y:wy,w:ww,h:ww});
+    }
+    // 树裙绒球随机种子（保持后续随机数一致）
+    for(var i=0;i<30;i++){ skirtPuffs.push({a:i/30*6.2832, r:2.5+rnd()*2}); }
+    // 礼物堆 8 盒参数
+    giftSpecs=[
+      {x:cx-treeH*0.34, y:baseY-treeH*0.005, w:treeH*0.14, h:treeH*0.10, c1:'#a8202a', c2:'#ffd75e'},
+      {x:cx-treeH*0.13, y:baseY+treeH*0.025, w:treeH*0.17, h:treeH*0.115, c1:'#c9a227', c2:'#8c1c1c'},
+      {x:cx+treeH*0.18, y:baseY+treeH*0.005, w:treeH*0.13, h:treeH*0.095, c1:'#274b8f', c2:'#e8e8e8'},
+      {x:cx+treeH*0.03, y:baseY-treeH*0.05, w:treeH*0.10, h:treeH*0.075, c1:'#7a1f2b', c2:'#e8c15a'},
+      {x:cx-treeH*0.23, y:baseY+treeH*0.045, w:treeH*0.12, h:treeH*0.085, c1:'#1f6b4a', c2:'#ffd75e'},
+      {x:cx+treeH*0.31, y:baseY+treeH*0.03, w:treeH*0.11, h:treeH*0.08, c1:'#8e44ad', c2:'#f5f5f5'},
+      {x:cx-treeH*0.02, y:baseY+treeH*0.055, w:treeH*0.15, h:treeH*0.10, c1:'#b03a2e', c2:'#f7dc6f'},
+      {x:cx+treeH*0.11, y:baseY+treeH*0.05, w:treeH*0.09, h:treeH*0.07, c1:'#16a085', c2:'#ffd75e'}
+    ];
+    // 浓密锥体 + 挂雪（缓存到 treeLayer）
     var tiers=6;
     for(var L=tiers-1;L>=0;L--){
       var t=L/(tiers-1);
@@ -204,52 +236,91 @@
     }
     // 天使顶
     angel(cx, baseY-treeH*0.98, treeH*0.085);
+    renderTreeScene(shakeActive? Math.max(0, performance.now()-shakeStart) : 0);
+  }
+  function renderTreeScene(shakeElapsed){
+    tctx.clearRect(0,0,W,H);
+    var cx=W/2, baseY=H*0.875, treeH=H*0.60;
+    var g0=tctx.createRadialGradient(cx,baseY-treeH*0.45,6,cx,baseY-treeH*0.45,treeH*0.9);
+    g0.addColorStop(0,'rgba(255,238,196,0.32)'); g0.addColorStop(0.5,'rgba(255,212,140,0.13)'); g0.addColorStop(1,'rgba(255,200,120,0)');
+    tctx.fillStyle=g0; tctx.fillRect(0,0,W,H);
+    var wob=0, p=0;
+    if(shakeElapsed>0 && shakeElapsed<500){
+      p=shakeElapsed/500;
+      wob=(1-p)*(1-p);
+    }
+    for(var hi=0;hi<houseSpecs.length;hi++){
+      var hs=houseSpecs[hi];
+      house(hs.x, hs.y, hs.s, wob, hi, p);
+    }
+    // 白毛绒树裙（厚度/半径随 accum 微调）
+    var ex=Math.max(0,(accum-0.35)/0.65);
+    var rx=treeH*(0.44+0.045*ex), ry=treeH*(0.075+0.028*ex), sy=baseY+treeH*(0.015-0.008*ex);
+    tctx.fillStyle='#fbfcff';
+    tctx.beginPath(); tctx.ellipse(cx,sy,rx,ry,0,0,6.2832); tctx.fill();
+    if(ex>0.05){
+      tctx.fillStyle='rgba(255,255,255,'+(0.35+0.35*ex)+')';
+      tctx.beginPath(); tctx.ellipse(cx,sy-ry*0.18,rx*0.86,ry*0.72,0,0,6.2832); tctx.fill();
+    }
+    tctx.fillStyle='rgba(255,255,255,0.94)';
+    for(var i=0;i<skirtPuffs.length;i++){
+      var sp=skirtPuffs[i];
+      tctx.beginPath();
+      tctx.arc(cx+rx*Math.cos(sp.a), sy+ry*Math.sin(sp.a), sp.r*(1+0.42*ex),0,6.2832);
+      tctx.fill();
+    }
+    // 礼物堆 8 盒
+    for(var gi=0;gi<giftSpecs.length;gi++){
+      var gs=giftSpecs[gi];
+      gift(gs.x, gs.y, gs.w, gs.h, gs.c1, gs.c2, wob, gi, p);
+    }
+    tctx.drawImage(treeLayer,0,0);
   }
   function drawSolidTier(cx,topY,halfW,lh,seedv){
     var teeth=18, i, tt, x, y, jag;
-    tctx.beginPath(); tctx.moveTo(cx,topY);
+    tlctx.beginPath(); tlctx.moveTo(cx,topY);
     for(i=0;i<=teeth;i++){ tt=i/teeth;
       x=cx+halfW*tt*(0.66+0.34*Math.sin(tt*2.4+seedv*1.3));
       y=topY+lh*tt; jag=(i%2)? lh*0.06:0;
-      tctx.lineTo(x+jag*0.2,y+jag);
-      if(i<teeth) tctx.lineTo(cx+halfW*tt*0.84, y+lh*0.04);
+      tlctx.lineTo(x+jag*0.2,y+jag);
+      if(i<teeth) tlctx.lineTo(cx+halfW*tt*0.84, y+lh*0.04);
     }
-    tctx.lineTo(cx,topY+lh*0.94);
+    tlctx.lineTo(cx,topY+lh*0.94);
     for(i=teeth;i>=0;i--){ tt=i/teeth;
       x=cx-halfW*tt*(0.66+0.34*Math.sin(tt*2.4+seedv*1.3+0.8));
       y=topY+lh*tt; jag=(i%2)? lh*0.06:0;
-      tctx.lineTo(x-jag*0.2,y+jag);
-      if(i>0) tctx.lineTo(cx-halfW*tt*0.84, y+lh*0.04);
+      tlctx.lineTo(x-jag*0.2,y+jag);
+      if(i>0) tlctx.lineTo(cx-halfW*tt*0.84, y+lh*0.04);
     }
-    tctx.closePath();
-    var g=tctx.createLinearGradient(0,topY,0,topY+lh);
+    tlctx.closePath();
+    var g=tlctx.createLinearGradient(0,topY,0,topY+lh);
     g.addColorStop(0,'rgb('+(122+seedv*4)+','+(152+seedv*4)+','+(122+seedv*3)+')');
     g.addColorStop(0.5,'rgb('+(82+seedv*4)+','+(114+seedv*4)+','+(86+seedv*3)+')');
     g.addColorStop(1,'rgb('+(48+seedv*3)+','+(76+seedv*3)+','+(54+seedv*2)+')');
-    tctx.fillStyle=g; tctx.fill();
-    tctx.save(); tctx.clip();
+    tlctx.fillStyle=g; tlctx.fill();
+    tlctx.save(); tlctx.clip();
     for(var k=0;k<50;k++){
       var rx=cx+(Math.random()-0.5)*halfW*1.7, ry=topY+Math.random()*lh;
-      tctx.fillStyle=Math.random()>0.5?'rgba(255,255,255,0.07)':'rgba(20,40,24,0.13)';
-      tctx.beginPath(); tctx.arc(rx,ry,Math.random()*lh*0.08+1.5,0,6.2832); tctx.fill();
+      tlctx.fillStyle=Math.random()>0.5?'rgba(255,255,255,0.07)':'rgba(20,40,24,0.13)';
+      tlctx.beginPath(); tlctx.arc(rx,ry,Math.random()*lh*0.08+1.5,0,6.2832); tlctx.fill();
     }
     // 挂雪：厚度随 accum（摇得越猛雪越厚）
     var th=lh*(0.07+0.17*accum);
-    tctx.fillStyle='rgba(255,255,255,0.93)';
-    tctx.beginPath();
-    for(i=0;i<=teeth;i++){ tt=i/teeth; x=cx+halfW*tt*0.88*(i%2?0.95:1); y=topY+lh*tt*0.28+(i%2?2:0); if(i===0)tctx.moveTo(x,y); else tctx.lineTo(x,y); }
-    for(i=teeth;i>=0;i--){ tt=i/teeth; x=cx+halfW*tt*0.88*(i%2?0.95:1); y=topY+lh*tt*0.28+(i%2?2:0)+th*(0.7+0.6*Math.sin(tt*7+seedv)); tctx.lineTo(x,y); }
-    tctx.closePath(); tctx.fill();
+    tlctx.fillStyle='rgba(255,255,255,0.93)';
+    tlctx.beginPath();
+    for(i=0;i<=teeth;i++){ tt=i/teeth; x=cx+halfW*tt*0.88*(i%2?0.95:1); y=topY+lh*tt*0.28+(i%2?2:0); if(i===0)tlctx.moveTo(x,y); else tlctx.lineTo(x,y); }
+    for(i=teeth;i>=0;i--){ tt=i/teeth; x=cx+halfW*tt*0.88*(i%2?0.95:1); y=topY+lh*tt*0.28+(i%2?2:0)+th*(0.7+0.6*Math.sin(tt*7+seedv)); tlctx.lineTo(x,y); }
+    tlctx.closePath(); tlctx.fill();
     var nClump=3+Math.round(accum*7);
     for(i=0;i<nClump;i++){ var sx2=cx+(Math.random()-0.5)*halfW*1.5, sy2=topY+lh*0.28*Math.min(1,Math.abs(sx2-cx)/halfW)+th;
-      tctx.beginPath(); tctx.arc(sx2,sy2,(1.5+Math.random()*2.5)*(0.7+accum*0.7),0,6.2832); tctx.fill(); }
-    tctx.restore();
+      tlctx.beginPath(); tlctx.arc(sx2,sy2,(1.5+Math.random()*2.5)*(0.7+accum*0.7),0,6.2832); tlctx.fill(); }
+    tlctx.restore();
   }
   function drawBranch(x,y,ang,len,droop,t){
     var dx=Math.sin(ang), dy=0.28+0.22*t;
     var ex=x+dx*len, ey=y+dy*len*0.55+droop;
-    tctx.strokeStyle='rgba(72,92,72,0.85)'; tctx.lineWidth=1.5;
-    tctx.beginPath(); tctx.moveTo(x,y); tctx.quadraticCurveTo(x+dx*len*0.5, y+dy*len*0.3, ex,ey); tctx.stroke();
+    tlctx.strokeStyle='rgba(72,92,72,0.85)'; tlctx.lineWidth=1.5;
+    tlctx.beginPath(); tlctx.moveTo(x,y); tlctx.quadraticCurveTo(x+dx*len*0.5, y+dy*len*0.3, ex,ey); tlctx.stroke();
     var n=9;
     for(var i=0;i<n;i++){
       var tt=i/n;
@@ -257,19 +328,19 @@
       var nl=len*0.17*(1-tt*0.45);
       var side=(dx>=0?1:-1);
       var c=rnd();
-      tctx.strokeStyle = c>0.62? 'rgba(158,178,158,0.9)' : (c>0.3? 'rgba(112,140,112,0.92)' : 'rgba(74,102,78,0.92)');
-      tctx.lineWidth=1.1;
-      tctx.beginPath();
-      tctx.moveTo(px,py); tctx.lineTo(px+side*nl*0.7, py+nl*0.45);
-      tctx.moveTo(px,py); tctx.lineTo(px-side*nl*0.45, py+nl*0.5);
-      tctx.moveTo(px,py); tctx.lineTo(px+side*nl*0.2, py-nl*0.35);
-      tctx.stroke();
+      tlctx.strokeStyle = c>0.62? 'rgba(158,178,158,0.9)' : (c>0.3? 'rgba(112,140,112,0.92)' : 'rgba(74,102,78,0.92)');
+      tlctx.lineWidth=1.1;
+      tlctx.beginPath();
+      tlctx.moveTo(px,py); tlctx.lineTo(px+side*nl*0.7, py+nl*0.45);
+      tlctx.moveTo(px,py); tlctx.lineTo(px-side*nl*0.45, py+nl*0.5);
+      tlctx.moveTo(px,py); tlctx.lineTo(px+side*nl*0.2, py-nl*0.35);
+      tlctx.stroke();
     }
     // 枝上挂雪（厚度随 accum）
-    tctx.strokeStyle='rgba(255,255,255,'+(0.55+0.35*accum)+')'; tctx.lineWidth=1.2+1.6*accum;
-    tctx.beginPath(); tctx.moveTo(x,y-1.2); tctx.quadraticCurveTo(x+dx*len*0.5, y+dy*len*0.3-1.8, ex,ey-1.2); tctx.stroke();
-    tctx.fillStyle='rgba(255,255,255,0.88)';
-    tctx.beginPath(); tctx.arc(ex,ey-1,(1.2+Math.random()*1.2)*(0.7+accum*0.8),0,6.2832); tctx.fill();
+    tlctx.strokeStyle='rgba(255,255,255,'+(0.55+0.35*accum)+')'; tlctx.lineWidth=1.2+1.6*accum;
+    tlctx.beginPath(); tlctx.moveTo(x,y-1.2); tlctx.quadraticCurveTo(x+dx*len*0.5, y+dy*len*0.3-1.8, ex,ey-1.2); tlctx.stroke();
+    tlctx.fillStyle='rgba(255,255,255,0.88)';
+    tlctx.beginPath(); tlctx.arc(ex,ey-1,(1.2+Math.random()*1.2)*(0.7+accum*0.8),0,6.2832); tlctx.fill();
   }
   function drawLamps(t){
     var palettes=[ ['#fff6da'],
@@ -303,19 +374,29 @@
       ctx.restore();
     }
   }
-  function house(x,y,s){
-    chimneys.push({x:x+s*0.32, y:y-s*0.98, s:s});
+  function house(x,y,s,wob,idx,p){
     var wx1=x-s*0.30, wx2=x+s*0.08, wy=y-s*0.42, ww=s*0.22;
-    windows.push({x:wx1,y:wy,w:ww,h:ww},{x:wx2,y:wy,w:ww,h:ww});
     var warm=Math.min(1,Math.max(0,(accum-0.35)/0.65));
     tctx.save();
+    if(wob>0){
+      var ph=p*18.85+idx*0.9, osc=Math.sin(ph);
+      tctx.translate(x+wob*osc*2.2, y);
+      tctx.rotate(wob*osc*0.045);
+      tctx.translate(-x, -y);
+    }
     tctx.fillStyle='#5a4632'; tctx.fillRect(x-s*0.5,y-s*0.55,s,s*0.55);
     tctx.fillStyle='#7a3b2e'; tctx.beginPath(); tctx.moveTo(x-s*0.62,y-s*0.55); tctx.lineTo(x,y-s*1.0); tctx.lineTo(x+s*0.62,y-s*0.55); tctx.closePath(); tctx.fill();
     tctx.fillStyle='rgba(255,255,255,0.92)';
     tctx.beginPath(); tctx.moveTo(x-s*0.62,y-s*0.55); tctx.lineTo(x,y-s*1.0); tctx.lineTo(x+s*0.62,y-s*0.55);
     tctx.lineTo(x+s*0.5,y-s*0.50); tctx.lineTo(x,y-s*0.88); tctx.lineTo(x-s*0.5,y-s*0.50); tctx.closePath(); tctx.fill();
-    tctx.shadowColor='rgba(255,'+Math.round(192+30*warm)+','+Math.round(78+52*warm)+','+(0.82+0.18*warm)+')';
-    tctx.shadowBlur=10+14*accum;
+    if(wob>0){
+      tctx.fillStyle='rgba(255,205,95,0.28)';
+      tctx.fillRect(wx1-ww*0.18,wy-ww*0.18,ww*1.36,ww*1.36);
+      tctx.fillRect(wx2-ww*0.18,wy-ww*0.18,ww*1.36,ww*1.36);
+    } else {
+      tctx.shadowColor='rgba(255,'+Math.round(192+30*warm)+','+Math.round(78+52*warm)+','+(0.82+0.18*warm)+')';
+      tctx.shadowBlur=10+14*accum;
+    }
     tctx.fillStyle='rgb(255,'+Math.round(212+28*warm)+','+Math.round(126+54*warm)+')';
     tctx.fillRect(wx1,wy,ww,ww);
     tctx.fillRect(wx2,wy,ww,ww);
@@ -328,18 +409,24 @@
     tctx.restore();
   }
   function angel(cx,y,s){
-    tctx.save(); tctx.shadowColor='#fff6d8'; tctx.shadowBlur=26;
-    tctx.fillStyle='rgba(255,250,236,0.96)';
-    tctx.beginPath(); tctx.ellipse(cx,y+s*0.55,s*0.5,s*0.85,0,0,6.2832); tctx.fill();
-    tctx.beginPath(); tctx.ellipse(cx-s*0.62,y+s*0.15,s*0.52,s*0.26,-0.55,0,6.2832); tctx.fill();
-    tctx.beginPath(); tctx.ellipse(cx+s*0.62,y+s*0.15,s*0.52,s*0.26,0.55,0,6.2832); tctx.fill();
-    tctx.beginPath(); tctx.arc(cx,y-s*0.5,s*0.32,0,6.2832); tctx.fill();
-    tctx.strokeStyle='rgba(255,240,190,0.9)'; tctx.lineWidth=1.4;
-    tctx.beginPath(); tctx.ellipse(cx,y-s*0.85,s*0.3,s*0.1,0,0,6.2832); tctx.stroke();
-    tctx.restore();
+    tlctx.save(); tlctx.shadowColor='#fff6d8'; tlctx.shadowBlur=26;
+    tlctx.fillStyle='rgba(255,250,236,0.96)';
+    tlctx.beginPath(); tlctx.ellipse(cx,y+s*0.55,s*0.5,s*0.85,0,0,6.2832); tlctx.fill();
+    tlctx.beginPath(); tlctx.ellipse(cx-s*0.62,y+s*0.15,s*0.52,s*0.26,-0.55,0,6.2832); tlctx.fill();
+    tlctx.beginPath(); tlctx.ellipse(cx+s*0.62,y+s*0.15,s*0.52,s*0.26,0.55,0,6.2832); tlctx.fill();
+    tlctx.beginPath(); tlctx.arc(cx,y-s*0.5,s*0.32,0,6.2832); tlctx.fill();
+    tlctx.strokeStyle='rgba(255,240,190,0.9)'; tlctx.lineWidth=1.4;
+    tlctx.beginPath(); tlctx.ellipse(cx,y-s*0.85,s*0.3,s*0.1,0,0,6.2832); tlctx.stroke();
+    tlctx.restore();
   }
-  function gift(x,y,w,h,c1,c2){
+  function gift(x,y,w,h,c1,c2,wob,idx,p){
     tctx.save();
+    if(wob>0){
+      var osc=Math.sin(p*20.4+idx*1.15);
+      tctx.translate(x+wob*osc*2.0, y);
+      tctx.rotate(wob*osc*0.085);
+      tctx.translate(-x, -y);
+    }
     tctx.fillStyle=c1; tctx.fillRect(x-w/2,y-h,w,h);
     tctx.fillStyle='rgba(0,0,0,0.18)'; tctx.fillRect(x-w/2,y-h,w,h*0.22);
     tctx.fillStyle=c2; tctx.fillRect(x-w*0.08,y-h,w*0.16,h); tctx.fillRect(x-w/2,y-h*0.58,w,h*0.16);
@@ -348,6 +435,60 @@
   }
 
   size(); window.addEventListener('resize', size);
+
+  // ---------- 球内夜空极光（位于树后方 canvas） ----------
+  var auroraBands=[
+    {y0:0.15, h:0.17, amp:0.08, sp:0.00042, ph:0.4, c1:'rgba(58,235,165,0)', c2:'rgba(72,235,175,0.16)', c3:'rgba(55,205,225,0.09)'},
+    {y0:0.22, h:0.18, amp:0.10, sp:0.00033, ph:2.1, c1:'rgba(65,210,240,0)', c2:'rgba(85,215,235,0.13)', c3:'rgba(165,110,250,0.10)'},
+    {y0:0.10, h:0.15, amp:0.07, sp:0.00051, ph:4.3, c1:'rgba(110,245,190,0)', c2:'rgba(95,225,195,0.10)', c3:'rgba(180,120,255,0.09)'}
+  ];
+  function drawAurora(t){
+    actx.clearRect(0,0,W,H*0.62);
+    actx.save();
+    actx.beginPath(); actx.arc(CX,CY,R,0,6.2832); actx.clip();
+    for(var i=0;i<auroraBands.length;i++){
+      var b=auroraBands[i];
+      var sx=Math.sin(t*b.sp+b.ph)*W*b.amp;
+      var sy=Math.cos(t*b.sp*0.8+b.ph)*H*0.02;
+      var topY=H*b.y0+sy, botY=topY+H*b.h;
+      var grd=actx.createLinearGradient(0,topY,0,botY);
+      grd.addColorStop(0,b.c1);
+      grd.addColorStop(0.38,b.c2);
+      grd.addColorStop(0.72,b.c3);
+      grd.addColorStop(1,b.c1);
+      var xL=CX-R*0.92+sx, xR=CX+R*0.92+sx, xM=CX+sx*0.65;
+      var wave=Math.sin(t*b.sp*1.5+b.ph)*H*0.032;
+      actx.fillStyle=grd;
+      actx.beginPath();
+      actx.moveTo(xL, topY+H*0.03);
+      actx.quadraticCurveTo(xM-R*0.25, topY-wave, xM+R*0.22, topY+wave*0.8);
+      actx.quadraticCurveTo(xR-R*0.15, topY+H*0.04, xR, topY+H*0.02);
+      actx.lineTo(xR, botY);
+      actx.quadraticCurveTo(xM+R*0.22, botY+wave*0.7, xM-R*0.22, botY-wave*0.9);
+      actx.quadraticCurveTo(xL+R*0.18, botY+H*0.03, xL, botY-H*0.01);
+      actx.closePath();
+      actx.fill();
+    }
+    actx.restore();
+  }
+
+  function drawAngelHalo(t){
+    var cx=W/2, baseY=H*0.875, treeH=H*0.60, s=treeH*0.085;
+    var hx=cx, hy=baseY-treeH*0.98-s*0.85;
+    var pulse=0.5+0.5*Math.sin(t*0.0026);
+    var rad=s*(0.65+0.28*pulse);
+    ctx.save();
+    var g=ctx.createRadialGradient(hx,hy,s*0.05,hx,hy,rad);
+    g.addColorStop(0,'rgba(255,248,212,'+(0.22+0.18*pulse)+')');
+    g.addColorStop(0.5,'rgba(255,226,145,'+(0.09+0.08*pulse)+')');
+    g.addColorStop(1,'rgba(255,220,130,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(hx,hy,rad,0,6.2832); ctx.fill();
+    ctx.strokeStyle='rgba(255,248,208,'+(0.35+0.48*pulse)+')';
+    ctx.lineWidth=1.1+0.5*pulse;
+    ctx.beginPath(); ctx.ellipse(hx,hy,s*0.305,s*0.105,0,0,6.2832); ctx.stroke();
+    ctx.restore();
+  }
 
   function resetSmoke(p,randAge){
     var ch=chimneys[p.ci%chimneys.length];
@@ -361,10 +502,12 @@
   }
   function initSmokes(){
     smokes.length=0;
+    var thrs=[0.18,0.42,0.68];
     for(var ci=0;ci<chimneys.length;ci++){
-      for(var k=0;k<5;k++){
-        var p={ci:ci, maxLife:95+Math.random()*35, life:0, x:0, y:0, r:2, ph:0, vx:0};
-        resetSmoke(p,true);
+      for(var k=0;k<8;k++){
+        var extra=k>=5;
+        var p={ci:ci, maxLife:95+Math.random()*35, life:0, x:0, y:0, r:2, ph:0, vx:0, extra:extra, thr:extra?thrs[k-5]:0, active:!extra};
+        if(!extra) resetSmoke(p,true);
         smokes.push(p);
       }
     }
@@ -375,13 +518,22 @@
     ctx.save();
     for(var i=0;i<smokes.length;i++){
       var p=smokes[i], ch=chimneys[p.ci%chimneys.length];
-      p.life+=1+boost*0.7;
-      if(p.life>=p.maxLife){ resetSmoke(p,false); ch=chimneys[p.ci%chimneys.length]; }
+      if(p.extra){
+        if(!p.active){
+          if(boost>=p.thr){ resetSmoke(p,false); p.active=true; }
+          else continue;
+        }
+      }
+      p.life+=1+boost*0.95;
+      if(p.life>=p.maxLife){
+        if(p.extra && boost<p.thr){ p.active=false; continue; }
+        resetSmoke(p,false); ch=chimneys[p.ci%chimneys.length];
+      }
       var pr=p.life/p.maxLife;
-      p.y-=0.24*(ch.s/40+0.6)*(1+boost*0.45);
+      p.y-=0.24*(ch.s/40+0.6)*(1+boost*1.15);
       p.x+=Math.sin(p.ph+p.life*0.06)*(0.18+boost*0.45)+p.vx;
       var rad=p.r*(1+pr*2.1);
-      var alpha=Math.sin(pr*3.1416)*0.24*(1-boost*0.25);
+      var alpha=Math.sin(pr*3.1416)*(0.24+boost*0.30);
       if(alpha<=0.005) continue;
       ctx.globalAlpha=alpha;
       ctx.fillStyle='#e6eef8';
@@ -405,7 +557,7 @@
     }
     ctx.restore();
   }
-  function drawSnowman(x,y,s,prog,melting){
+  function drawSnowman(x,y,s,prog,melting,t){
     if(prog<=0.005) return;
     var ease=1-Math.pow(1-prog,2);
     var sx=melting? (0.85+0.15*prog) : (0.55+0.45*ease);
@@ -436,11 +588,19 @@
     var g2=ctx.createRadialGradient(-r2*0.25,y2-r2*0.25,r2*0.1,0,y2,r2);
     g2.addColorStop(0,'#ffffff'); g2.addColorStop(1,'#dce8f7');
     ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(0,y2,r2,0,6.2832); ctx.fill();
-    // 红围巾
+    // 红围巾 + 随 boost 轻微飘动的末端
     ctx.fillStyle='#c92a2a';
     ctx.beginPath(); ctx.roundRect? ctx.roundRect(-r2*0.95,y2+r2*0.62,r2*1.9,s*0.10,s*0.04) : ctx.rect(-r2*0.95,y2+r2*0.62,r2*1.9,s*0.10); ctx.fill();
+    var sway=r2*(0.03*Math.sin((t||0)*0.003)+boost*(0.60*Math.sin((t||0)*0.017)+0.16*Math.sin((t||0)*0.031)));
+    var lift=Math.abs(sway)*0.22;
     ctx.fillStyle='#b02020';
-    ctx.beginPath(); ctx.moveTo(r2*0.25,y2+r2*0.76); ctx.lineTo(r2*0.65,y2+r2*0.76); ctx.lineTo(r2*0.78,y2+r2*1.45); ctx.lineTo(r2*0.38,y2+r2*1.45); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(r2*0.25,y2+r2*0.76);
+    ctx.lineTo(r2*0.65,y2+r2*0.76);
+    ctx.quadraticCurveTo(r2*0.72+sway*0.45,y2+r2*1.12,r2*0.78+sway,y2+r2*1.45-lift);
+    ctx.lineTo(r2*0.38+sway,y2+r2*1.45-lift);
+    ctx.quadraticCurveTo(r2*0.33+sway*0.45,y2+r2*1.12,r2*0.25,y2+r2*0.76);
+    ctx.closePath(); ctx.fill();
     // 纽扣与眼睛
     ctx.fillStyle='#242933';
     ctx.beginPath();
@@ -452,12 +612,29 @@
     // 胡萝卜鼻子
     ctx.fillStyle='#f08c28';
     ctx.beginPath(); ctx.moveTo(0,y2-r2*0.04); ctx.lineTo(s*0.20,y2+r2*0.06); ctx.lineTo(0,y2+r2*0.16); ctx.closePath(); ctx.fill();
-    // 小礼帽
-    ctx.fillStyle='#222630';
-    ctx.fillRect(-r2*1.05,y2-r2*0.86,r2*2.1,s*0.065);
-    ctx.fillRect(-r2*0.68,y2-r2*1.58,r2*1.36,r2*0.75);
-    ctx.fillStyle='#c92a2a';
-    ctx.fillRect(-r2*0.68,y2-r2*1.04,r2*1.36,s*0.048);
+    // 小礼帽（雪人渐显完成瞬间从上方落下并轻微弹跳一次到位）
+    if(hatProg>0){
+      var u=hatProg, hatDy=0, hatRot=0;
+      if(u<0.62){
+        var t1=u/0.62;
+        hatDy=-r2*2.5*(1-t1*t1);
+        hatRot=(1-t1)*-0.14;
+      } else if(u<1){
+        var t2=(u-0.62)/0.38;
+        hatDy=-r2*0.42*Math.sin(t2*3.1416);
+        hatRot=Math.sin(t2*3.1416)*0.06;
+      }
+      ctx.save();
+      ctx.globalAlpha*=Math.min(1,u*4);
+      ctx.translate(0,y2-r2*0.86+hatDy);
+      ctx.rotate(hatRot);
+      ctx.fillStyle='#222630';
+      ctx.fillRect(-r2*1.05,0,r2*2.1,s*0.065);
+      ctx.fillRect(-r2*0.68,-r2*0.72,r2*1.36,r2*0.75);
+      ctx.fillStyle='#c92a2a';
+      ctx.fillRect(-r2*0.68,-r2*0.18,r2*1.36,s*0.048);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -467,16 +644,24 @@
   for(var i=0;i<70;i++) flakes.push(newFlake());
   function resetTop(f){ var dx=f.x-CX; var half=Math.sqrt(Math.max(4,R*R-dx*dx)); f.y=CY-half*0.92; f.vy=Math.random()*0.5+0.25; }
   function tick(now){
+    drawAurora(now);
+    if(shakeActive){
+      var el=Math.max(0,now-shakeStart);
+      if(el<500){ renderTreeScene(el); }
+      else { shakeActive=false; renderTreeScene(0); }
+    }
     ctx.clearRect(0,0,W,H);
     ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
     drawWindowGlow(now);
     drawSmokes();
     drawLamps(now);
-    if(snowmanProg<snowmanTarget) snowmanProg=Math.min(1,snowmanProg+0.024);
-    else if(snowmanProg>snowmanTarget) snowmanProg=Math.max(0,snowmanProg-0.028);
+    drawAngelHalo(now);
+    if(snowmanProg<snowmanTarget){ snowmanProg=Math.min(1,snowmanProg+0.024); hatProg=0; }
+    else if(snowmanProg>snowmanTarget){ snowmanProg=Math.max(0,snowmanProg-0.028); if(snowmanProg<=0) hatProg=0; }
+    if(snowmanTarget===1 && snowmanProg>=1 && hatProg<1) hatProg=Math.min(1,hatProg+0.045);
     if(snowmanProg>0){
       var baseY=H*0.875, treeH=H*0.60;
-      drawSnowman(W/2+treeH*0.415, baseY+treeH*0.045, treeH*0.095, snowmanProg, snowmanTarget===0);
+      drawSnowman(W/2+treeH*0.415, baseY+treeH*0.045, treeH*0.095, snowmanProg, snowmanTarget===0, now);
     }
     ctx.fillStyle='#ffffff';
     for(var i=0;i<flakes.length;i++){ var f=flakes[i];
@@ -497,12 +682,19 @@
   }
   var accumChanged=false;
   requestAnimationFrame(tick);
-  // ---------- 外部氛围雪 ----------
-  var ac=document.getElementById('ambient'), ax=ac.getContext('2d'), AW=0,AH=0, amb=[];
+  // ---------- 外部氛围雪 + 夜空闪烁小星 ----------
+  var ac=document.getElementById('ambient'), ax=ac.getContext('2d'), AW=0,AH=0, amb=[], stars=[];
   function asize(){ AW=ac.width=innerWidth; AH=ac.height=innerHeight; }
   asize(); window.addEventListener('resize', asize);
   for(var j=0;j<50;j++) amb.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:Math.random()*2+0.6,s:Math.random()*0.7+0.3,o:Math.random()*0.4+0.15});
-  (function atick(){ ax.clearRect(0,0,AW,AH); ax.fillStyle='#fff';
+  for(var s=0;s<10;s++) stars.push({nx:0.05+Math.random()*0.9,ny:0.04+Math.random()*0.56,r:0.9+Math.random()*1.1,sp:0.0014+Math.random()*0.0022,ph:Math.random()*6.2832,o:0.28+Math.random()*0.32,c:s%3===0?'#ffe9b0':'#e6f0ff'});
+  (function atick(t){ ax.clearRect(0,0,AW,AH);
+    for(var si=0;si<stars.length;si++){ var st=stars[si], tw=0.5+0.5*Math.sin((t||0)*st.sp+st.ph), sx=st.nx*AW, sy=st.ny*AH;
+      ax.globalAlpha=st.o*(0.22+0.78*tw); ax.fillStyle=st.c;
+      ax.beginPath(); ax.arc(sx,sy,st.r*(0.85+0.25*tw),0,6.2832); ax.fill();
+      if(tw>0.6 && st.r>1.35){ ax.strokeStyle=st.c; ax.lineWidth=0.7; var cr=st.r*(1.8+tw);
+        ax.beginPath(); ax.moveTo(sx-cr,sy); ax.lineTo(sx+cr,sy); ax.moveTo(sx,sy-cr); ax.lineTo(sx,sy+cr); ax.stroke(); } }
+    ax.fillStyle='#fff';
     for(var k=0;k<amb.length;k++){ var p=amb[k]; ax.globalAlpha=p.o; ax.beginPath(); ax.arc(p.x,p.y,p.r,0,6.2832); ax.fill();
       p.y+=p.s; p.x+=Math.sin(p.y*0.01)*0.3; if(p.y>AH+4){p.y=-4;p.x=Math.random()*AW;} }
     ax.globalAlpha=1; requestAnimationFrame(atick); })();
@@ -516,6 +708,8 @@
   function shake(){
     var now=Date.now(); if(now-lastShake<500) return; lastShake=now;
     boost=1; accum=Math.min(1,accum+0.22); accumChanged=true;
+    updateGroundSnow();
+    shakeStart=performance.now(); shakeActive=true;
     globe.classList.remove('shaking'); void globe.offsetWidth; globe.classList.add('shaking');
     for(var i=0;i<flakes.length;i++){ flakes[i].vy=Math.random()*2+1.2; }
   }
