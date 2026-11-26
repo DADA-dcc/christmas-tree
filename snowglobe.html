@@ -169,17 +169,24 @@
   var skycv=document.getElementById('skycv'), sctx=skycv.getContext('2d');
   var fogcv=document.getElementById('fogcv'), fctx=fogcv.getContext('2d');
   var glasscv=document.getElementById('glasscv'), gctx=glasscv.getContext('2d');
-  var skyBlurLayer=document.createElement('canvas'); skyBlurLayer.width=160; skyBlurLayer.height=160;
+  var skyBlurLayer=document.createElement('canvas'); skyBlurLayer.width=112; skyBlurLayer.height=112;
   var sbctx=skyBlurLayer.getContext('2d');
   var horizonMistLayer=document.createElement('canvas'); horizonMistLayer.width=160; horizonMistLayer.height=48;
   var hmctx=horizonMistLayer.getContext('2d');
   var W=0,H=0,CX=0,CY=0,R=0, flakes=[], boost=0, lamps=[], accum=0.35, lampMode=0, lastRedraw=0;
   var chimneys=[], windows=[], smokes=[], snowmanProg=0, snowmanTarget=0, hatProg=0, lastTreeAccum=accum;
   var acv=document.getElementById('auroracv'), actx=acv.getContext('2d');
+  var auroraDofLayer=document.createElement('canvas'), adctx=auroraDofLayer.getContext('2d');
+  var auroraDofBlur=document.createElement('canvas'), adbCtx=auroraDofBlur.getContext('2d');
   var tcv=document.getElementById('treecv'), tctx=tcv.getContext('2d');
   var treeLayer=document.createElement('canvas'), tlctx=treeLayer.getContext('2d');
   var mountainLayer=document.createElement('canvas'), mlctx=mountainLayer.getContext('2d');
+  var mountainBlurA=document.createElement('canvas'), mbaCtx=mountainBlurA.getContext('2d');
+  var mountainBlurB=document.createElement('canvas'), mbbCtx=mountainBlurB.getContext('2d');
   var snowTexLayer=document.createElement('canvas'), stctx=snowTexLayer.getContext('2d');
+  var snowmanAoLayer=document.createElement('canvas'), smAoCtx=snowmanAoLayer.getContext('2d');
+  var snowmanBodyAoLayer=document.createElement('canvas'), smBodyAoCtx=snowmanBodyAoLayer.getContext('2d');
+  var snowmanAoSpec={s:0, gw:0, gh:0, bw:0, bh:0};
   var groundBack=document.getElementById('snow-ground-back'), groundFront=document.getElementById('snow-ground-front');
   var gbStops=[document.getElementById('gb-stop0'),document.getElementById('gb-stop1'),document.getElementById('gb-stop2')];
   var gfStops=[document.getElementById('gf-stop0'),document.getElementById('gf-stop1'),document.getElementById('gf-stop2')];
@@ -381,8 +388,6 @@
   function buildDistantMountains(){
     mlctx.clearRect(0,0,W,H);
     mlctx.save();
-    var hasFilter=('filter' in mlctx);
-    if(hasFilter) mlctx.filter='blur('+Math.max(1.5,W*0.0065).toFixed(1)+'px)';
     var ridges=[
       {
         pts:[[-0.06,0.84],[0.02,0.83],[0.13,0.68],[0.24,0.74],[0.35,0.61],[0.46,0.70],[0.56,0.63],[0.69,0.73],[0.81,0.62],[0.92,0.71],[1.06,0.83]],
@@ -417,7 +422,20 @@
       }
       mlctx.stroke();
     }
-    if(hasFilter) mlctx.filter='none';
+    // 静态离屏多级缩小放大实现镜头景深(DOF)模糊，避免每帧 filter
+    mbaCtx.clearRect(0,0,mountainBlurA.width,mountainBlurA.height);
+    mbaCtx.imageSmoothingEnabled=true;
+    mbaCtx.drawImage(mountainLayer,0,0,mountainBlurA.width,mountainBlurA.height);
+    mbbCtx.clearRect(0,0,mountainBlurB.width,mountainBlurB.height);
+    mbbCtx.imageSmoothingEnabled=true;
+    mbbCtx.drawImage(mountainBlurA,0,0,mountainBlurB.width,mountainBlurB.height);
+    mlctx.clearRect(0,0,W,H);
+    mlctx.imageSmoothingEnabled=true;
+    mlctx.globalAlpha=0.82;
+    mlctx.drawImage(mountainBlurB,0,0,W,H);
+    mlctx.globalAlpha=0.26;
+    mlctx.drawImage(mountainBlurA,0,0,W,H);
+    mlctx.globalAlpha=1;
     var mist=mlctx.createLinearGradient(0,H*0.72,0,H*0.90);
     mist.addColorStop(0,'rgba(24,40,64,0)');
     mist.addColorStop(0.55,'rgba(22,38,62,0.24)');
@@ -434,6 +452,40 @@
     mlctx.fillStyle=edgeF;
     mlctx.fillRect(0,0,W,H);
     mlctx.restore();
+  }
+
+  function buildSnowmanAo(){
+    var s=H*0.60*0.095, r1=s*0.36;
+    var gw=Math.max(8, Math.ceil(s*1.4)), gh=Math.max(6, Math.ceil(s*0.42));
+    var bw=Math.max(8, Math.ceil(r1*2.4)), bh=Math.max(8, Math.ceil(r1*2.4));
+    snowmanAoLayer.width=gw; snowmanAoLayer.height=gh;
+    snowmanBodyAoLayer.width=bw; snowmanBodyAoLayer.height=bh;
+    snowmanAoSpec={s:s, gw:gw, gh:gh, bw:bw, bh:bh};
+    // 1) 雪人底部接地 AO（离屏缓存，避免每帧重算渐变）
+    smAoCtx.clearRect(0,0,gw,gh);
+    smAoCtx.save();
+    smAoCtx.translate(gw*0.5, gh*0.5);
+    var rx=s*0.56, ry=s*0.145;
+    smAoCtx.scale(1, ry/rx);
+    var gAo=smAoCtx.createRadialGradient(0,0,rx*0.08,0,0,rx);
+    gAo.addColorStop(0,'rgba(10,18,32,0.52)');
+    gAo.addColorStop(0.45,'rgba(12,22,38,0.30)');
+    gAo.addColorStop(1,'rgba(16,26,40,0)');
+    smAoCtx.fillStyle=gAo;
+    smAoCtx.beginPath(); smAoCtx.arc(0,0,rx,0,6.2832); smAoCtx.fill();
+    smAoCtx.restore();
+    // 2) 雪人下雪球底部柔和自遮蔽暗部（离屏缓存）
+    smBodyAoCtx.clearRect(0,0,bw,bh);
+    smBodyAoCtx.save();
+    smBodyAoCtx.translate(bw*0.5, bh*0.5);
+    smBodyAoCtx.beginPath(); smBodyAoCtx.arc(0,0,r1,0,6.2832); smBodyAoCtx.clip();
+    var bAo=smBodyAoCtx.createLinearGradient(0, r1*0.20, 0, r1);
+    bAo.addColorStop(0,'rgba(12,22,38,0)');
+    bAo.addColorStop(0.55,'rgba(12,22,38,0.16)');
+    bAo.addColorStop(1,'rgba(8,16,30,0.40)');
+    smBodyAoCtx.fillStyle=bAo;
+    smBodyAoCtx.fillRect(-r1,-r1,r1*2,r1*2);
+    smBodyAoCtx.restore();
   }
 
   function buildSnowSpeckles(){
@@ -476,9 +528,17 @@
     fogcv.width=W; fogcv.height=H;
     glasscv.width=W; glasscv.height=H;
     acv.width=W; acv.height=H;
+    auroraDofLayer.width=Math.max(64, Math.round(W*0.28));
+    auroraDofLayer.height=Math.max(64, Math.round(H*0.28));
+    auroraDofBlur.width=Math.max(36, Math.round(W*0.14));
+    auroraDofBlur.height=Math.max(36, Math.round(H*0.14));
     tcv.width=W; tcv.height=H;
     treeLayer.width=W; treeLayer.height=H;
     mountainLayer.width=W; mountainLayer.height=H;
+    mountainBlurA.width=Math.max(32, Math.round(W*0.30));
+    mountainBlurA.height=Math.max(32, Math.round(H*0.30));
+    mountainBlurB.width=Math.max(20, Math.round(W*0.16));
+    mountainBlurB.height=Math.max(20, Math.round(H*0.16));
     snowTexLayer.width=W; snowTexLayer.height=H;
     fogGrad=fctx.createRadialGradient(CX,CY,R*0.36,CX,CY,R*1.02);
     fogGrad.addColorStop(0,'rgba(182,210,245,0)');
@@ -494,6 +554,7 @@
     drawGlassLayer();
     buildDistantMountains();
     buildSnowSpeckles();
+    buildSnowmanAo();
     drawTree();
   }
 
@@ -540,6 +601,21 @@
       var topY=baseY-treeH*0.10-(1-t)*treeH*0.80-treeH*0.22;
       var halfW=treeH*0.13+t*treeH*0.31;
       var lh=treeH*0.36;
+      // 上层树冠投射到下层树冠顶部的环境光遮蔽(AO)
+      if(L<tiers-1){
+        tlctx.save();
+        tlctx.globalCompositeOperation='source-atop';
+        var aoCy=topY+lh*0.95, aoRx=halfW*0.98, aoRy=lh*0.24;
+        tlctx.translate(cx, aoCy);
+        tlctx.scale(1, aoRy/aoRx);
+        var tierAo=tlctx.createRadialGradient(0,0,aoRx*0.10,0,0,aoRx);
+        tierAo.addColorStop(0,'rgba(8,14,26,0.44)');
+        tierAo.addColorStop(0.58,'rgba(10,18,32,0.22)');
+        tierAo.addColorStop(1,'rgba(12,22,36,0)');
+        tlctx.fillStyle=tierAo;
+        tlctx.beginPath(); tlctx.arc(0,0,aoRx,0,6.2832); tlctx.fill();
+        tlctx.restore();
+      }
       drawSolidTier(cx,topY,halfW,lh,L);
     }
     // 外伸下垂枝
@@ -642,6 +718,18 @@
       tctx.arc(cx+rx*Math.cos(sp.a), sy+ry*pyNorm, sp.r*(1+0.42*ex),0,6.2832);
       tctx.fill();
     }
+    // 树冠最底层投射在树裙上的接地环境光遮蔽(AO)
+    var trAoRx=treeH*0.40, trAoRy=treeH*0.072;
+    tctx.save();
+    tctx.translate(cx, baseY-treeH*0.015);
+    tctx.scale(1, trAoRy/trAoRx);
+    var trAoG=tctx.createRadialGradient(0,0,trAoRx*0.12,0,0,trAoRx);
+    trAoG.addColorStop(0,'rgba(8,14,26,0.36)');
+    trAoG.addColorStop(0.55,'rgba(12,20,34,0.16)');
+    trAoG.addColorStop(1,'rgba(16,26,40,0)');
+    tctx.fillStyle=trAoG;
+    tctx.beginPath(); tctx.arc(0,0,trAoRx,0,6.2832); tctx.fill();
+    tctx.restore();
     // 礼物堆 8 盒
     for(var gi=0;gi<giftSpecs.length;gi++){
       var gs=giftSpecs[gi];
@@ -691,14 +779,23 @@
     tlctx.lineWidth=1.1;
     tlctx.stroke();
     tlctx.save(); tlctx.clip();
-    // 底部极夜压暗 + 顶部冷蓝高光
+    // 底部极夜压暗 + 顶部冷蓝高光 + 树冠层底柔和 AO
     var shadeG=tlctx.createLinearGradient(0,topY,0,topY+lh);
     shadeG.addColorStop(0,'rgba(212,226,245,0.16)');
     shadeG.addColorStop(0.32,'rgba(212,226,245,0)');
-    shadeG.addColorStop(0.75,'rgba(16,26,40,0)');
-    shadeG.addColorStop(1,'rgba(16,26,40,0.36)');
+    shadeG.addColorStop(0.68,'rgba(16,26,40,0)');
+    shadeG.addColorStop(1,'rgba(8,14,26,0.48)');
     tlctx.fillStyle=shadeG;
     tlctx.fillRect(cx-halfW*1.1,topY,halfW*2.2,lh);
+    tlctx.save();
+    tlctx.translate(cx, topY+lh*0.95);
+    tlctx.scale(1, (lh*0.22)/(halfW*0.85));
+    var botAo=tlctx.createRadialGradient(0,0,halfW*0.08,0,0,halfW*0.85);
+    botAo.addColorStop(0,'rgba(8,14,24,0.34)');
+    botAo.addColorStop(1,'rgba(8,14,24,0)');
+    tlctx.fillStyle=botAo;
+    tlctx.beginPath(); tlctx.arc(0,0,halfW*0.85,0,6.2832); tlctx.fill();
+    tlctx.restore();
     for(var k=0;k<50;k++){
       var rx=cx+(Math.random()-0.5)*halfW*1.7, ry=topY+Math.random()*lh;
       tlctx.fillStyle=Math.random()>0.5?'rgba(212,226,245,0.07)':'rgba(16,26,40,0.18)';
@@ -798,15 +895,29 @@
       tctx.rotate(wob*osc*0.045);
       tctx.translate(-x, -y);
     }
-    // 房屋底部接地阴影
-    tctx.fillStyle='rgba(16,26,40,0.36)';
-    tctx.beginPath(); tctx.ellipse(x,y+s*0.015,s*0.56,s*0.075,0,0,6.2832); tctx.fill();
+    // 房屋底部接地环境光遮蔽(AO)
+    var hAoRx=s*0.64, hAoRy=s*0.105;
+    tctx.save();
+    tctx.translate(x, y+s*0.014);
+    tctx.scale(1, hAoRy/hAoRx);
+    var hAoG=tctx.createRadialGradient(0,0,hAoRx*0.10,0,0,hAoRx);
+    hAoG.addColorStop(0,'rgba(8,14,26,0.52)');
+    hAoG.addColorStop(0.50,'rgba(12,22,38,0.26)');
+    hAoG.addColorStop(1,'rgba(16,26,40,0)');
+    tctx.fillStyle=hAoG;
+    tctx.beginPath(); tctx.arc(0,0,hAoRx,0,6.2832); tctx.fill();
+    tctx.restore();
     // 墙体冷调明暗（檐下偏暗、顶部微受冷天光、底部压暗）
     var wallG=tctx.createLinearGradient(0,y-s*0.55,0,y);
     wallG.addColorStop(0,'#3b3536');
     wallG.addColorStop(0.35,'#4e423b');
     wallG.addColorStop(1,'#282328');
     tctx.fillStyle=wallG; tctx.fillRect(x-s*0.5,y-s*0.55,s,s*0.55);
+    // 墙根接触雪地线性 AO
+    var wAoG=tctx.createLinearGradient(0,y-s*0.18,0,y);
+    wAoG.addColorStop(0,'rgba(8,14,24,0)');
+    wAoG.addColorStop(1,'rgba(8,14,24,0.40)');
+    tctx.fillStyle=wAoG; tctx.fillRect(x-s*0.5,y-s*0.18,s,s*0.18);
     // 屋顶主体
     var roofG=tctx.createLinearGradient(0,y-s*1.0,0,y-s*0.55);
     roofG.addColorStop(0,'#633432');
@@ -855,9 +966,18 @@
       tctx.rotate(wob*osc*0.035);
       tctx.translate(-x, -y);
     }
-    // 接地阴影
-    tctx.fillStyle='rgba(16,26,40,0.36)';
-    tctx.beginPath(); tctx.ellipse(x,y,w*0.95,w*0.24,0,0,6.2832); tctx.fill();
+    // 路灯柱底部接地环境光遮蔽(AO)
+    var lAoRx=w*1.28, lAoRy=w*0.34;
+    tctx.save();
+    tctx.translate(x, y+w*0.04);
+    tctx.scale(1, lAoRy/lAoRx);
+    var lAoG=tctx.createRadialGradient(0,0,lAoRx*0.10,0,0,lAoRx);
+    lAoG.addColorStop(0,'rgba(8,14,26,0.54)');
+    lAoG.addColorStop(0.50,'rgba(12,22,38,0.24)');
+    lAoG.addColorStop(1,'rgba(16,26,40,0)');
+    tctx.fillStyle=lAoG;
+    tctx.beginPath(); tctx.arc(0,0,lAoRx,0,6.2832); tctx.fill();
+    tctx.restore();
     // 灯柱底座与柱身
     var postG=tctx.createLinearGradient(x-w*0.22,0,x+w*0.22,0);
     postG.addColorStop(0,'#3b4756'); postG.addColorStop(0.55,'#252f3b'); postG.addColorStop(1,'#141b24');
@@ -866,6 +986,15 @@
     tctx.moveTo(x-w*0.26,y); tctx.lineTo(x-w*0.12,y-h*0.14);
     tctx.lineTo(x-w*0.075,headY+w*0.35); tctx.lineTo(x+w*0.075,headY+w*0.35);
     tctx.lineTo(x+w*0.12,y-h*0.14); tctx.lineTo(x+w*0.26,y);
+    tctx.closePath(); tctx.fill();
+    // 底座接雪线性 AO
+    var pAoG=tctx.createLinearGradient(0,y-h*0.11,0,y);
+    pAoG.addColorStop(0,'rgba(8,14,24,0)');
+    pAoG.addColorStop(1,'rgba(6,12,20,0.42)');
+    tctx.fillStyle=pAoG;
+    tctx.beginPath();
+    tctx.moveTo(x-w*0.26,y); tctx.lineTo(x-w*0.14,y-h*0.11);
+    tctx.lineTo(x+w*0.14,y-h*0.11); tctx.lineTo(x+w*0.26,y);
     tctx.closePath(); tctx.fill();
     // 左侧冷蓝边缘光
     tctx.strokeStyle='rgba(136,170,224,0.45)'; tctx.lineWidth=0.9;
@@ -932,11 +1061,28 @@
       tctx.rotate(wob*osc*0.085);
       tctx.translate(-x, -y);
     }
+    // 礼物盒底部接地环境光遮蔽(AO)
+    var gAoRx=w*0.66, gAoRy=h*0.155;
+    tctx.save();
+    tctx.translate(x, y+h*0.025);
+    tctx.scale(1, gAoRy/gAoRx);
+    var gAo=tctx.createRadialGradient(0,0,gAoRx*0.12,0,0,gAoRx);
+    gAo.addColorStop(0,'rgba(8,14,26,0.48)');
+    gAo.addColorStop(0.55,'rgba(12,22,38,0.20)');
+    gAo.addColorStop(1,'rgba(16,26,40,0)');
+    tctx.fillStyle=gAo;
+    tctx.beginPath(); tctx.arc(0,0,gAoRx,0,6.2832); tctx.fill();
+    tctx.restore();
+    var boxAo=tctx.createLinearGradient(0,y-h*0.24,0,y);
+    boxAo.addColorStop(0,'rgba(8,14,24,0)');
+    boxAo.addColorStop(1,'rgba(8,14,24,0.32)');
     var op=openProg||0;
     if(op<=0.001){
       tctx.fillStyle=c1; tctx.fillRect(x-w/2,y-h,w,h);
       tctx.fillStyle='rgba(0,0,0,0.18)'; tctx.fillRect(x-w/2,y-h,w,h*0.22);
       tctx.fillStyle=c2; tctx.fillRect(x-w*0.08,y-h,w*0.16,h); tctx.fillRect(x-w/2,y-h*0.58,w,h*0.16);
+      tctx.fillStyle=boxAo; tctx.fillRect(x-w/2,y-h*0.24,w,h*0.24);
+      tctx.fillStyle=c2;
       tctx.beginPath(); tctx.arc(x-w*0.10,y-h-h*0.10,w*0.09,0,6.2832); tctx.arc(x+w*0.10,y-h-h*0.10,w*0.09,0,6.2832); tctx.fill();
       tctx.restore();
       return;
@@ -950,6 +1096,7 @@
     tctx.fillStyle=c2;
     tctx.fillRect(x-w*0.08,y-bodyH,w*0.16,bodyH);
     tctx.fillRect(x-w/2,y-h*0.58,w,h*0.16);
+    tctx.fillStyle=boxAo; tctx.fillRect(x-w/2,y-h*0.24,w,h*0.24);
     // 弹起旋转的盒盖+蝴蝶结
     var pop=Math.sin(Math.min(1,op*1.12)*1.5708);
     var lidY=y-h-pop*h*0.44;
@@ -996,14 +1143,15 @@
     hg.addColorStop(1,'rgba(255,228,170,0)');
     actx.fillStyle=hg;
     actx.beginPath(); actx.arc(mx,my,haloR,0,6.2832); actx.fill();
-    var mg=actx.createRadialGradient(mx-mr*0.26,my-mr*0.26,mr*0.1,mx,my,mr);
+    var mg=actx.createRadialGradient(mx-mr*0.26,my-mr*0.26,mr*0.1,mx,my,mr*1.08);
     mg.addColorStop(0,'#fffef5');
-    mg.addColorStop(0.68,'#fff4d4');
-    mg.addColorStop(1,'#f2dfb4');
+    mg.addColorStop(0.66,'#fff4d4');
+    mg.addColorStop(0.84,'#f2dfb4');
+    mg.addColorStop(1,'rgba(242,223,180,0)');
     actx.save();
     actx.globalAlpha=mVis;
     actx.fillStyle=mg;
-    actx.beginPath(); actx.arc(mx,my,mr,0,6.2832); actx.fill();
+    actx.beginPath(); actx.arc(mx,my,mr*1.08,0,6.2832); actx.fill();
     actx.restore();
   }
   function drawMeteor(t){
@@ -1049,6 +1197,10 @@
     var aVis=skyState.auroraVis;
     var at=t+auroraPhase, beatA=(1+musicBass*0.95)*(1+auroraStormMix*0.38)*aVis;
     var refRgb0='72,235,175', refRgb1='85,215,235', refSx=0;
+    var adW=auroraDofLayer.width, adH=auroraDofLayer.height;
+    adctx.clearRect(0,0,adW,adH);
+    adctx.save();
+    adctx.scale(adW/W, adH/H);
     for(var i=0;i<auroraBands.length;i++){
       var b=auroraBands[i];
       var sx=Math.sin(at*b.sp+b.ph)*W*b.amp;
@@ -1058,25 +1210,25 @@
       if(i===0){ refRgb0=rgb2; refSx=sx; }
       else if(i===1){ refRgb1=rgb3; }
       if(aVis<=0.02) continue;
-      var grd=actx.createLinearGradient(0,topY,0,botY);
+      var grd=adctx.createLinearGradient(0,topY,0,botY);
       grd.addColorStop(0,b.c1);
       grd.addColorStop(0.38,'rgba('+rgb2+','+(b.a2*beatA).toFixed(3)+')');
       grd.addColorStop(0.72,'rgba('+rgb3+','+(b.a3*beatA).toFixed(3)+')');
       grd.addColorStop(1,b.c1);
       var xL=CX-R*0.92+sx, xR=CX+R*0.92+sx, xM=CX+sx*0.65;
       var wave=Math.sin(at*b.sp*1.5+b.ph)*H*(0.032+musicBass*0.014);
-      actx.fillStyle=grd;
-      actx.beginPath();
-      actx.moveTo(xL, topY+H*0.03);
-      actx.quadraticCurveTo(xM-R*0.25, topY-wave, xM+R*0.22, topY+wave*0.8);
-      actx.quadraticCurveTo(xR-R*0.15, topY+H*0.04, xR, topY+H*0.02);
-      actx.lineTo(xR, botY);
-      actx.quadraticCurveTo(xM+R*0.22, botY+wave*0.7, xM-R*0.22, botY-wave*0.9);
-      actx.quadraticCurveTo(xL+R*0.18, botY+H*0.03, xL, botY-H*0.01);
-      actx.closePath();
-      actx.fill();
+      adctx.fillStyle=grd;
+      adctx.beginPath();
+      adctx.moveTo(xL, topY+H*0.03);
+      adctx.quadraticCurveTo(xM-R*0.25, topY-wave, xM+R*0.22, topY+wave*0.8);
+      adctx.quadraticCurveTo(xR-R*0.15, topY+H*0.04, xR, topY+H*0.02);
+      adctx.lineTo(xR, botY);
+      adctx.quadraticCurveTo(xM+R*0.22, botY+wave*0.7, xM-R*0.22, botY-wave*0.9);
+      adctx.quadraticCurveTo(xL+R*0.18, botY+H*0.03, xL, botY-H*0.01);
+      adctx.closePath();
+      adctx.fill();
     }
-    // 极光帷幕竖向柔和光柱
+    // 极光帷幕竖向柔和光柱（绘制到小尺寸离屏层，再经双级下采样模糊模拟浅景深 DOF）
     if(aVis>0.02){
       for(var ri=0;ri<auroraRays.length;ri++){
         var ry=auroraRays[ri];
@@ -1086,24 +1238,36 @@
         var rBot=rTop+H*ry.h;
         var rw=W*ry.w;
         var rayA=Math.min(0.16,ry.a*beatA);
-        var rgrd=actx.createLinearGradient(0,rTop,0,rBot);
+        var rgrd=adctx.createLinearGradient(0,rTop,0,rBot);
         rgrd.addColorStop(0,'rgba('+refRgb0+',0)');
         rgrd.addColorStop(0.22,'rgba('+refRgb0+','+rayA.toFixed(3)+')');
         rgrd.addColorStop(0.65,'rgba('+refRgb1+','+(rayA*0.55).toFixed(3)+')');
         rgrd.addColorStop(1,'rgba('+refRgb1+',0)');
-        actx.fillStyle=rgrd;
+        adctx.fillStyle=rgrd;
         var bx=rx+sw*0.45;
-        actx.globalAlpha=0.55;
-        actx.beginPath();
-        actx.moveTo(rx-rw,rTop); actx.lineTo(rx+rw,rTop);
-        actx.lineTo(bx+rw*0.85,rBot); actx.lineTo(bx-rw*0.85,rBot);
-        actx.closePath(); actx.fill();
-        actx.globalAlpha=0.65;
-        actx.beginPath();
-        actx.moveTo(rx-rw*0.44,rTop); actx.lineTo(rx+rw*0.44,rTop);
-        actx.lineTo(bx+rw*0.38,rBot); actx.lineTo(bx-rw*0.38,rBot);
-        actx.closePath(); actx.fill();
+        adctx.globalAlpha=0.55;
+        adctx.beginPath();
+        adctx.moveTo(rx-rw,rTop); adctx.lineTo(rx+rw,rTop);
+        adctx.lineTo(bx+rw*0.85,rBot); adctx.lineTo(bx-rw*0.85,rBot);
+        adctx.closePath(); adctx.fill();
+        adctx.globalAlpha=0.65;
+        adctx.beginPath();
+        adctx.moveTo(rx-rw*0.44,rTop); adctx.lineTo(rx+rw*0.44,rTop);
+        adctx.lineTo(bx+rw*0.38,rBot); adctx.lineTo(bx-rw*0.38,rBot);
+        adctx.closePath(); adctx.fill();
       }
+    }
+    adctx.restore();
+    if(aVis>0.02){
+      adbCtx.clearRect(0,0,auroraDofBlur.width,auroraDofBlur.height);
+      adbCtx.imageSmoothingEnabled=true;
+      adbCtx.drawImage(auroraDofLayer,0,0,auroraDofBlur.width,auroraDofBlur.height);
+      actx.imageSmoothingEnabled=true;
+      actx.globalAlpha=0.82;
+      actx.drawImage(auroraDofBlur,0,0,W,H);
+      actx.globalAlpha=0.26;
+      actx.drawImage(auroraDofLayer,0,0,W,H);
+      actx.globalAlpha=1;
     }
     actx.globalAlpha=aVis;
     drawMeteor(t);
@@ -1278,10 +1442,12 @@
     ctx.globalAlpha=alpha;
     ctx.translate(x,y);
     ctx.scale(sx,sy);
-    // 地面投影
+    // 地面投影 + 预渲染雪人底部接地 AO（不每帧重算渐变）
     var shScale=1-jump*0.18;
-    ctx.fillStyle='rgba(16,26,40,0.38)';
-    ctx.beginPath(); ctx.ellipse(0,0,s*0.44*shScale,s*0.11*shScale,0,0,6.2832); ctx.fill();
+    if(snowmanAoSpec.gw>0){
+      var aW=snowmanAoSpec.gw*shScale, aH=snowmanAoSpec.gh*shScale;
+      ctx.drawImage(snowmanAoLayer, -aW*0.5, -aH*0.5, aW, aH);
+    }
     ctx.save();
     ctx.translate(0,bounceY);
     ctx.scale(bSx,bSy);
@@ -1301,11 +1467,14 @@
     ctx.moveTo(s*0.18,-s*0.10); ctx.lineTo(s*0.26,-s*0.22);
     ctx.stroke();
     ctx.restore();
-    // 下身雪球（顶部冷蓝高光 #d4e2f5/#c2cfe0 → 底部暗 #708299 + 淡蓝轮廓光）
+    // 下身雪球（顶部冷蓝高光 #d4e2f5/#c2cfe0 → 底部暗 #708299 + 淡蓝轮廓光 + 预渲染底部 AO）
     var r1=s*0.36, y1=-r1*0.92;
     var g1=ctx.createRadialGradient(-r1*0.28,y1-r1*0.30,r1*0.08,0,y1,r1);
     g1.addColorStop(0,'#d4e2f5'); g1.addColorStop(0.45,'#b8c7da'); g1.addColorStop(1,'#6d8098');
     ctx.fillStyle=g1; ctx.beginPath(); ctx.arc(0,y1,r1,0,6.2832); ctx.fill();
+    if(snowmanAoSpec.bw>0){
+      ctx.drawImage(snowmanBodyAoLayer, -snowmanAoSpec.bw*0.5, y1-snowmanAoSpec.bh*0.5);
+    }
     ctx.strokeStyle='rgba(136,170,224,0.48)'; ctx.lineWidth=Math.max(0.8,s*0.022);
     ctx.beginPath(); ctx.arc(0,y1,r1-0.4,3.4,5.4); ctx.stroke();
     // 头部雪球
@@ -1380,31 +1549,62 @@
     if(accum>prevAccum+0.004) footprintActive=true;
     prevAccum=accum;
     if(footprintActive && accum>0.38){
-      footprintAlpha=Math.min(1,footprintAlpha+0.024);
-      footprintReveal=Math.min(1,footprintReveal+0.011);
+      var accumBoost=Math.min(1, Math.max(0, (accum-0.35)/0.65));
+      footprintAlpha=Math.min(1, footprintAlpha+0.024);
+      footprintReveal=Math.min(1, footprintReveal+0.0085+0.0075*accumBoost);
     } else if(footprintAlpha>0){
-      footprintAlpha=Math.max(0,footprintAlpha-0.0035);
+      footprintAlpha=Math.max(0, footprintAlpha-0.0030);
       if(footprintAlpha<=0){ footprintReveal=0; footprintActive=false; }
     }
     if(footprintAlpha<=0.005 || footprintReveal<=0.005) return;
-    var cx=W/2, baseY=H*0.875, treeH=H*0.60, steps=6;
-    var sx=cx+treeH*0.21, sy=baseY+treeH*0.072;
-    var ex=cx+treeH*0.47, ey=baseY+treeH*0.022;
-    var ang=Math.atan2(ey-sy,ex-sx), nx=-Math.sin(ang), ny=Math.cos(ang);
-    var rx=Math.max(1.5,treeH*0.010), ry=Math.max(1.0,treeH*0.0062);
+    var cx=W/2, baseY=H*0.875, treeH=H*0.60, steps=8;
+    var sx=cx+treeH*0.185, sy=baseY+treeH*0.075;
+    var ex=cx+treeH*0.505, ey=baseY+treeH*0.017;
+    var arcAmp=treeH*0.013;
+    var baseRx=Math.max(1.8,treeH*0.0125), baseRy=Math.max(1.05,treeH*0.0070);
     ctx.save();
     for(var i=0;i<steps;i++){
-      var stepFade=Math.max(0,Math.min(1,(footprintReveal-i*0.13)/0.22))*footprintAlpha;
+      var stepFade=Math.max(0,Math.min(1,(footprintReveal-i*0.105)/0.18))*footprintAlpha;
       if(stepFade<=0.01) continue;
-      var u=i/(steps-1), side=(i%2===0?1:-1)*treeH*0.011;
-      var px=sx+(ex-sx)*u+nx*side, py=sy+(ey-sy)*u+Math.sin(u*3.1416)*treeH*0.012+ny*side;
+      var u=i/(steps-1);
+      // 透视缩放与深浅：近处(树裙右前)大且深，远处(右侧小屋前)小且淡
+      var persp=1-0.42*u;
+      var depthFade=1-0.44*u;
+      var px0=sx+(ex-sx)*u, py0=sy+(ey-sy)*u+Math.sin(u*3.1416)*arcAmp;
+      var tx=ex-sx, ty=(ey-sy)+Math.cos(u*3.1416)*3.1416*arcAmp;
+      var pathAng=Math.atan2(ty,tx), nx=-Math.sin(pathAng), ny=Math.cos(pathAng);
+      var lr=(i%2===0?1:-1);
+      var strideOff=lr*treeH*0.0115*persp;
+      var px=px0+nx*strideOff, py=py0+ny*strideOff;
+      var footAng=pathAng+lr*0.135+Math.sin(i*2.37+0.5)*0.045;
+      var rx=baseRx*persp, ry=baseRy*persp;
+      var alphaBase=stepFade*depthFade;
       ctx.save();
       ctx.translate(px,py);
-      ctx.rotate(ang);
-      ctx.globalAlpha=0.48*stepFade;
-      ctx.fillStyle='#4b627e';
-      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,6.2832); ctx.fill();
-      ctx.beginPath(); ctx.arc(-rx*0.95,0,ry*0.72,0,6.2832); ctx.fill();
+      ctx.rotate(footAng);
+      // 1) 边缘积雪隆起淡蓝阴影（外沿受压隆起背光侧）
+      ctx.globalAlpha=0.36*alphaBase;
+      ctx.fillStyle='#7c99ba';
+      ctx.beginPath(); ctx.ellipse(rx*0.08,ry*0.28,rx*1.20,ry*1.26,0,0,6.2832); ctx.fill();
+      // 2) 边缘积雪隆起白色高光（踩踏挤出的雪埂亮边）
+      ctx.globalAlpha=0.62*alphaBase;
+      ctx.strokeStyle='#f2f7ff';
+      ctx.lineWidth=Math.max(0.85,ry*0.42);
+      ctx.beginPath(); ctx.ellipse(0,-ry*0.06,rx*1.06,ry*1.10,0,0,6.2832); ctx.stroke();
+      // 3) 椭圆压扁凹陷脚印（脚掌 + 脚跟，双层偏移模拟凹坑深浅）
+      ctx.globalAlpha=0.66*alphaBase;
+      ctx.fillStyle='#435c7c';
+      ctx.beginPath(); ctx.ellipse(rx*0.18,0,rx*0.72,ry*0.92,0,0,6.2832); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-rx*0.60,0,rx*0.40,ry*0.74,0,0,6.2832); ctx.fill();
+      ctx.globalAlpha=0.42*alphaBase;
+      ctx.fillStyle='#6987ab';
+      ctx.beginPath(); ctx.ellipse(rx*0.18,ry*0.16,rx*0.58,ry*0.68,0,0,6.2832); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-rx*0.60,ry*0.14,rx*0.30,ry*0.52,0,0,6.2832); ctx.fill();
+      // 4) 坑沿下方受光微高光唇边
+      ctx.globalAlpha=0.45*alphaBase;
+      ctx.strokeStyle='#e8f2ff';
+      ctx.lineWidth=Math.max(0.6,ry*0.24);
+      ctx.beginPath(); ctx.ellipse(rx*0.16,ry*0.12,rx*0.72,ry*0.88,0,0.25,2.89); ctx.stroke();
       ctx.restore();
     }
     ctx.restore();
