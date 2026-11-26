@@ -345,6 +345,234 @@ function buildSnowmanFootprints(a){
   return { cv:c, ox:pad, oy:pad*0.5 };
 }
 
+
+// ===== v16 公共（雪橇/装饰球/音符/吹雪/窗光/北极星）=====
+// 1) 圣诞老人雪橇
+var sleigh={active:false, next:0, t0:0, dur:0, dir:1, trail:[]};
+var SLEIGH_MAX_TRAIL=8;
+function sleighPos(p){
+  var x0=CX-R*0.95*sleigh.dir, x1=CX+R*0.95*sleigh.dir;
+  var x=x0+(x1-x0)*p;
+  var yTop=CY-R*0.62, yEdge=CY-R*0.30;
+  return { x:x, y:yEdge-(yEdge-yTop)*4*p*(1-p) };
+}
+function drawSleighSilhouette(x,y,d,sc){
+  ctx.save(); ctx.translate(x,y); ctx.scale(d*sc,sc);
+  ctx.fillStyle='#5a1a12';
+  ctx.beginPath(); ctx.moveTo(-14,-2); ctx.lineTo(2,-2); ctx.lineTo(4,-8); ctx.lineTo(-12,-8); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#d8b050'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(-16,1); ctx.lineTo(4,1); ctx.quadraticCurveTo(8,1,7,-3); ctx.stroke();
+  ctx.fillStyle='#c0242a';
+  ctx.beginPath(); ctx.arc(-6,-11,4.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#f4f0e8';
+  ctx.beginPath(); ctx.arc(-4.5,-15,2.6,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#c0242a';
+  ctx.beginPath(); ctx.moveTo(-8,-17); ctx.lineTo(-3,-17); ctx.lineTo(-7,-23); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(-7,-23,1.2,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(220,190,120,0.8)'; ctx.lineWidth=0.7;
+  ctx.beginPath(); ctx.moveTo(3,-6); ctx.lineTo(14,-7); ctx.stroke();
+  ctx.fillStyle='#6b4424';
+  ctx.beginPath(); ctx.ellipse(19,-7,6,3,0,0,Math.PI*2); ctx.fill();
+  ctx.fillRect(14,-5,1.2,5); ctx.fillRect(23,-5,1.2,5);
+  ctx.beginPath(); ctx.arc(27,-11,2.4,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#6b4424'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(24.5,-8); ctx.lineTo(26,-10); ctx.stroke();
+  ctx.strokeStyle='#8a6a40'; ctx.lineWidth=0.9;
+  ctx.beginPath();
+  ctx.moveTo(26,-13); ctx.lineTo(24,-18); ctx.moveTo(25,-16); ctx.lineTo(22.5,-17);
+  ctx.moveTo(28,-13); ctx.lineTo(29,-18); ctx.moveTo(28.6,-16); ctx.lineTo(31,-17);
+  ctx.stroke();
+  ctx.fillStyle='#ff3a2a';
+  ctx.beginPath(); ctx.arc(29.3,-10.6,0.9,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+function drawSleighFly(now){
+  if(!sleigh.next) sleigh.next=now+4000;
+  if(!sleigh.active && now>=sleigh.next){
+    sleigh.active=true; sleigh.t0=now;
+    sleigh.dur=5200+Math.random()*1600;
+    sleigh.dir=Math.random()<0.5?1:-1;
+  }
+  if(!sleigh.active && !sleigh.trail.length) return;
+  ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,Math.PI*2); ctx.clip();
+  var i, pt, p=0;
+  if(sleigh.active){
+    p=(now-sleigh.t0)/sleigh.dur;
+    if(p>=1){ sleigh.active=false; sleigh.next=now+10000+Math.random()*6000; }
+  }
+  if(sleigh.active){
+    pt=sleighPos(p);
+    if(sleigh.trail.length<SLEIGH_MAX_TRAIL && Math.random()<0.25){
+      sleigh.trail.push({ x:pt.x-sleigh.dir*R*0.03, y:pt.y, vx:-sleigh.dir*0.15, vy:0.12, life:1, r:1+Math.random()*1.4 });
+    }
+  }
+  ctx.globalCompositeOperation='lighter';
+  for(i=sleigh.trail.length-1;i>=0;i--){
+    var st=sleigh.trail[i];
+    st.x+=st.vx; st.y+=st.vy; st.life-=0.012;
+    if(st.life<=0){ sleigh.trail.splice(i,1); continue; }
+    var g=ctx.createRadialGradient(st.x,st.y,0,st.x,st.y,st.r*4);
+    g.addColorStop(0,'rgba(255,230,140,'+(0.9*st.life)+')');
+    g.addColorStop(1,'rgba(255,200,80,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(st.x,st.y,st.r*4,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over';
+  if(sleigh.active){
+    var fade=Math.min(1,p*8,(1-p)*8);
+    ctx.globalAlpha=fade*0.92;
+    drawSleighSilhouette(pt.x, pt.y+Math.sin(now*0.006)*R*0.006, sleigh.dir, R/260);
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+// 2) 树上装饰球
+function ornRand(n){ var x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+function drawOrnaments(tl){
+  var bY=H*0.875, tH=H*0.60, cx=W/2;
+  var topY=bY-tH*0.92, botY=bY-tH*0.10;
+  var k=Math.max(0,Math.min(1,(accum-0.35)/0.65));
+  var n=12+Math.round(k*4);
+  var pal=[['#ff8a80','#c62828','#5a0c0c'],['#fff3b0','#e0a82e','#6a4a08'],['#9ad0ff','#2a6fd6','#0c2350']];
+  for(var i=0;i<n;i++){
+    var f=0.12+0.86*((i+0.5)/16);
+    var y=topY+(botY-topY)*f;
+    var halfW=tH*0.36*f;
+    var side=(i%2?1:-1);
+    var x=cx+side*halfW*(0.55+ornRand(i)*0.38);
+    y+=tH*0.025;
+    var r=tH*(0.011+ornRand(i+9)*0.006);
+    var c=pal[i%3];
+    tl.strokeStyle='rgba(220,200,150,0.6)'; tl.lineWidth=0.6;
+    tl.beginPath(); tl.moveTo(x,y-r-tH*0.012); tl.lineTo(x,y-r); tl.stroke();
+    var g=tl.createRadialGradient(x-r*0.35,y-r*0.35,r*0.1,x,y,r);
+    g.addColorStop(0,c[0]); g.addColorStop(0.55,c[1]); g.addColorStop(1,c[2]);
+    tl.fillStyle=g;
+    tl.beginPath(); tl.arc(x,y,r,0,Math.PI*2); tl.fill();
+    tl.fillStyle='rgba(255,255,255,0.85)';
+    tl.beginPath(); tl.arc(x-r*0.38,y-r*0.4,r*0.22,0,Math.PI*2); tl.fill();
+  }
+}
+// 3) 音乐音符
+var notes=[], noteNext=0, NOTE_MAX=6;
+function drawMusicNotes(now){
+  var bY=H*0.875;
+  if(musicEnergy>0.08 && now>=noteNext && notes.length<NOTE_MAX){
+    notes.push({ x:CX+(Math.random()-0.5)*R*0.2, y:bY-H*0.02,
+                 vx:(Math.random()-0.5)*0.3, vy:-0.45-Math.random()*0.3,
+                 rot:(Math.random()-0.5)*0.6, vr:(Math.random()-0.5)*0.02,
+                 life:1, ch:Math.random()<0.5?'\u266A':'\u266B', sz:R*(0.05+Math.random()*0.025) });
+    noteNext=now+800+Math.random()*700;
+  }
+  if(!notes.length) return;
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(var i=notes.length-1;i>=0;i--){
+    var n=notes[i];
+    n.x+=n.vx+Math.sin(now*0.003+i)*0.25;
+    n.y+=n.vy; n.rot+=n.vr; n.life-=0.006;
+    if(n.life<=0){ notes.splice(i,1); continue; }
+    ctx.save(); ctx.translate(n.x,n.y); ctx.rotate(n.rot);
+    ctx.globalAlpha=Math.min(1,n.life*1.5)*0.9;
+    ctx.font=n.sz+'px serif'; ctx.fillStyle='#f5cf5a';
+    ctx.fillText(n.ch,0,0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// 4) 雪人吹雪
+var breath=[], breathNext=0;
+function drawSnowmanBreath(now){
+  var bY=H*0.875, tH=H*0.60;
+  var sx=W/2+tH*0.415, sy=bY+tH*0.045, s=tH*0.095;
+  var fx=sx-s*0.55, fy=sy-s*2.35;
+  if(!breathNext) breathNext=now+5000;
+  if(snowmanProg>=1 && now>=breathNext && !breath.length){
+    var cnt=3+((Math.random()<0.5)?1:0);
+    for(var k=0;k<cnt;k++){
+      breath.push({ x:fx, y:fy, vx:-0.6-Math.random()*0.6, vy:-0.5-Math.random()*0.5, life:1, r:s*(0.05+Math.random()*0.04) });
+    }
+    breathNext=now+7000+Math.random()*5000;
+  }
+  if(!breath.length) return;
+  ctx.save(); ctx.fillStyle='#ffffff';
+  for(var i=breath.length-1;i>=0;i--){
+    var b=breath[i];
+    b.x+=b.vx; b.y+=b.vy; b.vy+=0.025; b.vx*=0.985; b.life-=0.018; b.r*=1.006;
+    if(b.life<=0){ breath.splice(i,1); continue; }
+    ctx.globalAlpha=b.life*0.85;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+// 5) 点小屋窗光切换（适配 houseSpecs={x,y,s}）
+var houseLight=[], houseLightTarget=[], houseLightT=[];
+function houseBox(i){
+  var hs=houseSpecs[i], s=hs.s;
+  return { x:hs.x-s*0.62, y:hs.y-s, w:s*1.24, h:s*0.55, rh:s*0.45 };
+}
+function hitTestHouse(px,py){
+  for(var i=0;i<houseSpecs.length;i++){
+    var b=houseBox(i);
+    if(px>=b.x && px<=b.x+b.w && py>=b.y && py<=b.y+b.h) return i;
+    var ty=b.y-b.rh, mx=b.x+b.w/2, ov=b.w*0.08;
+    if(py>=ty && py<=b.y){
+      var half=(b.w/2+ov)*(py-ty)/b.rh;
+      if(Math.abs(px-mx)<=half) return i;
+    }
+  }
+  return -1;
+}
+function toggleHouseLight(i){
+  if(houseLightTarget[i]===undefined){ houseLightTarget[i]=1; houseLight[i]=1; }
+  houseLightTarget[i]=houseLightTarget[i]?0:1;
+  houseLightT[i]={ from:houseLight[i], t0:performance.now() };
+}
+function houseLightLevel(i){
+  if(houseLightTarget[i]===undefined) return 1;
+  var a=houseLightT[i];
+  if(a){
+    var p=Math.min(1,(performance.now()-a.t0)/300);
+    p=p*p*(3-2*p);
+    houseLight[i]=a.from+(houseLightTarget[i]-a.from)*p;
+    if(p>=1) houseLightT[i]=null;
+  }
+  return houseLight[i];
+}
+// 6) 摇雪北极星
+function drawNorthStar(now){
+  if(!shakeActive || !shakeStart) return;
+  var e=now-shakeStart;
+  if(e>2200 || e<0) return;
+  var bY=H*0.875, tH=H*0.60;
+  var x=W/2, y=bY-tH-tH*0.10;
+  var a=Math.min(1,e/250)*(e>1600?1-(e-1600)/600:1);
+  a*=0.8+0.2*Math.sin(now*0.025);
+  var r=tH*0.035;
+  ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=a;
+  var g=ctx.createRadialGradient(x,y,0,x,y,r*4);
+  g.addColorStop(0,'rgba(255,250,220,0.9)');
+  g.addColorStop(0.3,'rgba(255,230,150,0.35)');
+  g.addColorStop(1,'rgba(255,210,120,0)');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(x,y,r*4,0,Math.PI*2); ctx.fill();
+  var L=r*(5+Math.sin(now*0.018));
+  ctx.strokeStyle='rgba(255,245,210,0.85)'; ctx.lineWidth=Math.max(1,r*0.12);
+  ctx.beginPath();
+  ctx.moveTo(x-L,y); ctx.lineTo(x+L,y);
+  ctx.moveTo(x,y-L*1.25); ctx.lineTo(x,y+L*1.25);
+  ctx.stroke();
+  ctx.fillStyle='#fff6d0';
+  ctx.beginPath();
+  for(var i=0;i<10;i++){
+    var ang=-Math.PI/2+i*Math.PI/5, rr=(i%2)?r*0.42:r;
+    var px=x+Math.cos(ang)*rr, py=y+Math.sin(ang)*rr;
+    if(i) ctx.lineTo(px,py); else ctx.moveTo(px,py);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
 // ===== v15 公共（礼物飘雪/视角/光斑/连线）=====
 var xfx = { giftSnow:[], nextGift:[], spot:null, nextSpot:0, link:null, nextLink:0, view:0, viewFrom:0, viewStart:0, plateOnce:0 };
 function xfxEase(t){ return t<0?0:t>1?1:(t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2); }
@@ -1038,6 +1266,8 @@ function drawSnowmanFootprints(){
       var xx=cx+(rnd()-0.5)*2*halfW2;
       lamps.push({x:xx,y:yy,u:u,r:1.5+rnd()*1.3, sp:2+rnd()*4, ph:rnd()*6.28, ci:(rnd()*5)|0});
     }
+    // v16 树上装饰球（画在 treeLayer 静态层）
+    try{ drawOrnaments(tlctx); }catch(e){}
     // 天使顶
     angel(cx, baseY-treeH*0.98, treeH*0.085);
     renderTreeScene(shakeActive? Math.max(0, performance.now()-shakeStart) : 0, 0);
@@ -1790,9 +2020,12 @@ function drawSnowmanFootprints(){
     ctx.save();
     for(var i=0;i<windows.length;i++){
       var w=windows[i], cxw=w.x+w.w*0.5, cyw=w.y+w.h*0.5, rad=w.w*(1.45+1.1*g);
+      // v16 点屋开关：按当前屋灯光强度缩放（windows 每屋 2 窗成对，取 i/2|0）
+      var hLv=1; try{ if(typeof houseLightLevel==='function') hLv=houseLightLevel((i/2)|0); }catch(_e){}
+      if(hLv<=0.02) continue;
       var grd=ctx.createRadialGradient(cxw,cyw,w.w*0.15,cxw,cyw,rad);
-      grd.addColorStop(0,'rgba('+c0+','+(0.40*g*pulse).toFixed(3)+')');
-      grd.addColorStop(0.52,'rgba('+c1+','+(0.20*g*pulse).toFixed(3)+')');
+      grd.addColorStop(0,'rgba('+c0+','+(hLv*0.40*g*pulse).toFixed(3)+')');
+      grd.addColorStop(0.52,'rgba('+c1+','+(hLv*0.20*g*pulse).toFixed(3)+')');
       grd.addColorStop(1,'rgba(168,196,230,0)');
       ctx.fillStyle=grd;
       ctx.beginPath(); ctx.arc(cxw,cyw,rad,0,6.2832); ctx.fill();
@@ -2605,6 +2838,10 @@ function drawSnowmanFootprints(){
     xfxGiftSnow(now);
     xfxSnowSpot(now);
     xfxStarLinks(now);
+    drawSleighFly(now);
+    drawMusicNotes(now);
+    drawSnowmanBreath(now);
+    drawNorthStar(now);
     requestAnimationFrame(tick);
   }
   var accumChanged=false;
@@ -2892,6 +3129,10 @@ function drawSnowmanFootprints(){
       return;
     }
     if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
+      // v16 点屋切换窗光（先于树脉冲）
+      var hpt=null, hi=-1;
+      try{ hpt=clientToSceneCoords(e.clientX, e.clientY); if(hpt) hi=hitTestHouse(hpt.x, hpt.y); }catch(_e){}
+      if(hi>=0){ toggleHouseLight(hi); clearHold(); clearPending(); return; }
       triggerTreePulse();
       clearHold(); clearPending();
       return;
