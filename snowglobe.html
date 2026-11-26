@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Snow Globe · 圣诞雪景球</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; }
+  body {
+    background: radial-gradient(ellipse at 50% 0%, #16233f 0%, #0a1226 45%, #05080f 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    user-select:none; touch-action:manipulation;
+  }
+  #ambient { position:fixed; inset:0; z-index:0; pointer-events:none; }
+  h1 {
+    position:relative; z-index:2; color:#ffe9b0; font-size:clamp(20px,5vw,34px); font-weight:700;
+    letter-spacing:.08em; margin-bottom:18px; text-align:center; padding:0 12px;
+    text-shadow:0 0 16px rgba(255,214,120,.85), 0 0 42px rgba(255,170,60,.45), 0 2px 6px rgba(0,0,0,.6);
+  }
+  .wrap { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; }
+  .globe { position:relative; width:min(78vw,400px); aspect-ratio:1/1.16; }
+  .globe.shaking { animation: shake .7s cubic-bezier(.36,.07,.19,.97); }
+  @keyframes shake {
+    0%,100% { transform:rotate(0) translateX(0); }
+    15% { transform:rotate(-4deg) translateX(-10px); }
+    30% { transform:rotate(3.5deg) translateX(9px); }
+    45% { transform:rotate(-3deg) translateX(-7px); }
+    60% { transform:rotate(2.4deg) translateX(6px); }
+    75% { transform:rotate(-1.6deg) translateX(-4px); }
+    90% { transform:rotate(1deg) translateX(2px); }
+  }
+  .ball {
+    position:absolute; top:0; left:50%; transform:translateX(-50%);
+    width:100%; aspect-ratio:1/1; border-radius:50%; overflow:hidden;
+    background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.30), rgba(255,255,255,.06) 38%, rgba(120,170,255,.05) 62%, rgba(10,20,45,.35) 100%);
+    box-shadow:
+      inset 0 0 60px rgba(160,200,255,.22),
+      inset -18px -22px 60px rgba(0,10,40,.45),
+      inset 14px 16px 40px rgba(255,255,255,.16),
+      0 18px 50px rgba(0,0,0,.55),
+      0 0 0 3px rgba(255,255,255,.10);
+    cursor:grab;
+  }
+  .ball:active { cursor:grabbing; }
+  .scene { position:absolute; inset:0; }
+  .scene svg { position:absolute; inset:0; width:100%; height:100%; }
+  #snow { position:absolute; inset:0; width:100%; height:100%; }
+  .glare {
+    position:absolute; top:9%; left:14%; width:34%; height:22%; border-radius:50%;
+    background: radial-gradient(ellipse at 40% 40%, rgba(255,255,255,.75), rgba(255,255,255,0) 70%);
+    transform:rotate(-22deg); pointer-events:none; filter:blur(1px);
+  }
+  .glare2 {
+    position:absolute; bottom:12%; right:12%; width:16%; height:9%; border-radius:50%;
+    background: radial-gradient(ellipse, rgba(255,255,255,.30), rgba(255,255,255,0) 70%);
+    transform:rotate(-20deg); pointer-events:none;
+  }
+  .base {
+    position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+    width:62%; height:17%;
+    background: linear-gradient(180deg, #8a5a2b 0%, #6b421c 40%, #4a2c12 100%);
+    border-radius:12px 12px 18px 18px / 10px 10px 22px 22px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.6), inset 0 3px 6px rgba(255,220,160,.28), inset 0 -6px 12px rgba(0,0,0,.5);
+  }
+  .base::before {
+    content:""; position:absolute; top:-6%; left:6%; width:88%; height:26%;
+    background: linear-gradient(180deg, #a06a33, #7a4c20); border-radius:50%;
+    box-shadow: inset 0 2px 4px rgba(255,225,170,.35);
+  }
+  .plate {
+    position:absolute; top:38%; left:50%; transform:translateX(-50%);
+    color:#ffd98a; font-size:clamp(9px,2.4vw,13px); letter-spacing:.14em; white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.7); font-weight:600;
+  }
+  .hint {
+    position:relative; z-index:2; margin-top:26px; color:#9fb4d8; font-size:14px; letter-spacing:.06em;
+    background:rgba(255,255,255,.06); padding:9px 18px; border-radius:22px;
+    border:1px solid rgba(255,255,255,.10);
+  }
+  .hint b { color:#ffd98a; }
+  #bgm-hint {
+    position:fixed; bottom:18px; right:18px; z-index:99; cursor:pointer;
+    background:rgba(0,0,0,.62); color:#ffd966; padding:9px 15px; border-radius:22px;
+    font-size:14px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.4);
+  }
+</style>
+</head>
+<body>
+<canvas id="ambient"></canvas>
+<h1>"Merry Christmas" from XS</h1>
+<div class="wrap">
+  <div class="globe" id="globe">
+    <div class="ball" id="ball">
+      <div class="scene">
+        <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMax meet">
+          <ellipse cx="100" cy="176" rx="78" ry="16" fill="#eef6ff"/>
+          <ellipse cx="100" cy="172" rx="66" ry="12" fill="#ffffff"/>
+          <rect x="95" y="150" width="10" height="16" rx="2" fill="#6b421c"/>
+          <polygon points="100,52 138,102 62,102" fill="#1d6b34"/>
+          <polygon points="100,72 146,126 54,126" fill="#22803d"/>
+          <polygon points="100,94 154,152 46,152" fill="#2a9448"/>
+          <polygon points="100,38 104,48 114,49 106,56 109,66 100,60 91,66 94,56 86,49 96,48" fill="#ffd75e"/>
+          <g fill="#ff5d5d"><circle cx="86" cy="98" r="3"/><circle cx="118" cy="122" r="3"/><circle cx="76" cy="146" r="3"/></g>
+          <g fill="#ffd75e"><circle cx="108" cy="96" r="3"/><circle cx="88" cy="124" r="3"/><circle cx="126" cy="146" r="3"/></g>
+          <g fill="#7ec8ff"><circle cx="98" cy="112" r="3"/><circle cx="66" cy="148" r="3"/><circle cx="110" cy="148" r="3"/></g>
+          <circle cx="152" cy="160" r="9" fill="#ffffff"/><circle cx="152" cy="148" r="6.5" fill="#ffffff"/>
+          <circle cx="150" cy="147" r="1" fill="#333"/><circle cx="154" cy="147" r="1" fill="#333"/>
+          <polygon points="152,149 158,150 152,151.5" fill="#ff8c42"/>
+          <rect x="36" y="158" width="16" height="13" rx="2" fill="#c0392b"/><rect x="42.5" y="158" width="3" height="13" fill="#ffd75e"/>
+          <rect x="36" y="163" width="16" height="3" fill="#ffd75e"/>
+        </svg>
+        <canvas id="snow"></canvas>
+      </div>
+      <div class="glare"></div>
+      <div class="glare2"></div>
+    </div>
+    <div class="base"><div class="plate">MERRY CHRISTMAS</div></div>
+  </div>
+  <div class="hint">🫧 <b>摇一摇手机</b> 或 <b>点一点球</b> → 下大雪</div>
+</div>
+<div id="bgm-hint">🔊 点击开启音乐</div>
+<audio id="bgm" src="bgm2.mp3" loop muted preload="auto"></audio>
+<script>
+(function(){
+  var ball=document.getElementById('ball'), cv=document.getElementById('snow'), ctx=cv.getContext('2d');
+  var W=0,H=0,CX=0,CY=0,R=0, flakes=[], boost=0;
+  function size(){ var r=ball.getBoundingClientRect(); W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height); CX=W/2; CY=H/2; R=W/2; }
+  size(); window.addEventListener('resize', size);
+  function inCircle(scale){ var a=Math.random()*6.2832, rr=Math.sqrt(Math.random())*R*(scale||0.9); return {x:CX+Math.cos(a)*rr, y:CY+Math.sin(a)*rr}; }
+  function newFlake(){ var p=inCircle(0.9); return { x:p.x, y:p.y, r:Math.random()*2.4+0.7, vy:Math.random()*0.5+0.25, ph:Math.random()*6.28, o:Math.random()*0.55+0.35 }; }
+  for(var i=0;i<70;i++) flakes.push(newFlake());
+  function resetTop(f){ var dx=f.x-CX; var half=Math.sqrt(Math.max(4,R*R-dx*dx)); f.y=CY-half*0.92; f.vy=Math.random()*0.5+0.25; }
+  function tick(){
+    ctx.clearRect(0,0,W,H);
+    ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
+    ctx.fillStyle='#ffffff';
+    for(var i=0;i<flakes.length;i++){ var f=flakes[i];
+      f.ph+=0.02+boost*0.06;
+      f.x+=Math.sin(f.ph)*(0.35+boost*1.8)+(Math.random()-0.5)*boost*2.4;
+      f.y+=(0.35+boost*2.8)*f.r*0.8+0.2;
+      var dx=f.x-CX, dy=f.y-CY, d2=dx*dx+dy*dy;
+      if(d2>R*R*0.92 && dy>0){ resetTop(f); }
+      else if(d2>R*R){ f.x=CX+(Math.random()-0.5)*R*0.8; f.y=CY-R*0.85; }
+      ctx.globalAlpha=f.o; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,6.2832); ctx.fill();
+    }
+    ctx.globalAlpha=1; ctx.restore();
+    if(boost>0) boost=Math.max(0,boost-0.018);
+    requestAnimationFrame(tick);
+  }
+  tick();
+  // 外部氛围雪
+  var ac=document.getElementById('ambient'), ax=ac.getContext('2d'), AW=0,AH=0, amb=[];
+  function asize(){ AW=ac.width=innerWidth; AH=ac.height=innerHeight; }
+  asize(); window.addEventListener('resize', asize);
+  for(var j=0;j<50;j++) amb.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:Math.random()*2+0.6,s:Math.random()*0.7+0.3,o:Math.random()*0.4+0.15});
+  (function atick(){ ax.clearRect(0,0,AW,AH); ax.fillStyle='#fff';
+    for(var k=0;k<amb.length;k++){ var p=amb[k]; ax.globalAlpha=p.o; ax.beginPath(); ax.arc(p.x,p.y,p.r,0,6.2832); ax.fill();
+      p.y+=p.s; p.x+=Math.sin(p.y*0.01)*0.3; if(p.y>AH+4){p.y=-4;p.x=Math.random()*AW;} }
+    ax.globalAlpha=1; requestAnimationFrame(atick); })();
+  // 摇一摇 / 点击
+  var globe=document.getElementById('globe'), lastShake=0;
+  function shake(){
+    var now=Date.now(); if(now-lastShake<500) return; lastShake=now;
+    boost=1; globe.classList.remove('shaking'); void globe.offsetWidth; globe.classList.add('shaking');
+    for(var i=0;i<flakes.length;i++){ flakes[i].vy=Math.random()*2+1.2; }
+  }
+  globe.addEventListener('pointerdown', function(){ shake(); unlockMusic(); });
+  window.addEventListener('devicemotion', function(e){
+    var a=e.accelerationIncludingGravity; if(!a||a.x==null) return;
+    if(Math.abs(a.x)+Math.abs(a.y)+Math.abs(a.z)>26) shake();
+  });
+  // 音乐
+  var bgm=document.getElementById('bgm'), bh=document.getElementById('bgm-hint'), unlocked=false;
+  function unlockMusic(){ if(unlocked) return; unlocked=true;
+    if(bgm){ bgm.muted=false; bgm.volume=0.55; bgm.play().catch(function(){}); }
+    if(bh) bh.style.display='none'; }
+  if(bgm){ bgm.play().catch(function(){}); }
+  bh.addEventListener('click', unlockMusic);
+})();
+</script>
+</body>
+</html>
