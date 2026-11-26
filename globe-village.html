@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Christmas Snow Globe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a0d2e 0%, #2d1b4e 50%, #1a0d2e 100%);
+            font-family: 'Arial', sans-serif;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        #fallback {
+            display: none;
+            color: white;
+            text-align: center;
+            padding: 40px;
+            font-size: 2em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #fallback.show {
+            display: block;
+        }
+
+        #shake-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        #title-text {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 800px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #title-text svg {
+            width: 100%;
+            height: auto;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.5));
+        }
+
+        #title-text text {
+            fill: #ffffff;
+            font-family: 'Georgia', serif;
+            font-size: 42px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        @media (max-width: 768px) {
+            #title-text {
+                max-width: 90%;
+            }
+            #title-text text {
+                font-size: 32px;
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="title-text">
+        <svg viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <path id="curve" d="M 50,100 Q 400,20 750,100" fill="transparent"/>
+            </defs>
+            <text>
+                <textPath href="#curve" startOffset="50%" text-anchor="middle">
+                    Merry Christmas From Tyler
+                </textPath>
+            </text>
+        </svg>
+    </div>
+    <div id="canvas-container"></div>
+    <div id="shake-hint">Click or tap to shake the globe!</div>
+    <div id="fallback">
+        <h1>🎄 Merry Christmas! 🎄</h1>
+        <p style="font-size: 0.5em; margin-top: 20px;">WebGL is not supported on this device</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // WebGL Detection
+        function checkWebGL() {
+            try {
+                const canvas = document.createElement('canvas');
+                return !!(window.WebGLRenderingContext &&
+                    (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+            } catch(e) {
+                return false;
+            }
+        }
+
+        if (!checkWebGL()) {
+            document.getElementById('fallback').classList.add('show');
+        } else {
+            initSnowGlobe();
+        }
+
+        function initSnowGlobe() {
+            // Scene setup
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a0d2e);
+
+            const camera = new THREE.PerspectiveCamera(
+                50,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 8, 25);
+            camera.lookAt(0, 4, 0);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xfff8e1, 0.8);
+            directionalLight.position.set(10, 15, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            scene.add(directionalLight);
+
+            const fillLight = new THREE.DirectionalLight(0x64b5f6, 0.3);
+            fillLight.position.set(-10, 5, -10);
+            scene.add(fillLight);
+
+            // Snow Globe Group
+            const globeGroup = new THREE.Group();
+            scene.add(globeGroup);
+
+            // Base of snow globe
+            const baseGeometry = new THREE.CylinderGeometry(6, 7, 2, 32);
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8b4513,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.y = -1;
+            base.receiveShadow = true;
+            globeGroup.add(base);
+
+            // Decorative ring on base
+            const ringGeometry = new THREE.TorusGeometry(6.5, 0.3, 16, 32);
+            const ringMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffd700,
+                roughness: 0.3,
+                metalness: 0.8
+            });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.position.y = 0;
+            ring.rotation.x = Math.PI / 2;
+            globeGroup.add(ring);
+
+            // Ground inside globe
+            const groundGeometry = new THREE.CircleGeometry(5.5, 32);
+            const groundMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.9,
+                side: THREE.DoubleSide
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0.01;
+            ground.receiveShadow = true;
+            globeGroup.add(ground);
+
+            // Create cottages
+            function createCottage(x, z, scale, roofColor) {
+                const cottage = new THREE.Group();
+
+                // House body
+                const bodyGeometry = new THREE.BoxGeometry(1.5 * scale, 1.2 * scale, 1.2 * scale);
+                const bodyMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xd2691e,
+                    roughness: 0.9
+                });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.6 * scale;
+                body.castShadow = true;
+                cottage.add(body);
+
+                // Roof
+                const roofGeometry = new THREE.ConeGeometry(1.2 * scale, 0.8 * scale, 4);
+                const roofMaterial = new THREE.MeshStandardMaterial({
+                    color: roofColor,
+                    roughness: 0.8
+                });
+                const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+                roof.position.y = 1.6 * scale;
+                roof.rotation.y = Math.PI / 4;
+                roof.castShadow = true;
+                cottage.add(roof);
+
+                // Door
+                const doorGeometry = new THREE.BoxGeometry(0.4 * scale, 0.7 * scale, 0.05 * scale);
+                const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
+                const door = new THREE.Mesh(doorGeometry, doorMaterial);
+                door.position.set(0, 0.35 * scale, 0.61 * scale);
+                cottage.add(door);
+
+                // Windows
+                const windowGeometry = new THREE.BoxGeometry(0.3 * scale, 0.3 * scale, 0.05 * scale);
+                const windowMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffeb3b,
+                    emissive: 0xffeb3b,
+                    emissiveIntensity: 0.5
+                });
+
+                const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
+                window1.position.set(-0.4 * scale, 0.7 * scale, 0.61 * scale);
+                cottage.add(window1);
+
+                const window2 = new THREE.Mesh(windowGeometry, windowMaterial);
+                window2.position.set(0.4 * scale, 0.7 * scale, 0.61 * scale);
+                cottage.add(window2);
+
+                // Chimney
+                const chimneyGeometry = new THREE.BoxGeometry(0.3 * scale, 0.6 * scale, 0.3 * scale);
+                const chimneyMaterial = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
+                const chimney = new THREE.Mesh(chimneyGeometry, chimneyMaterial);
+                chimney.position.set(0.5 * scale, 1.7 * scale, 0.3 * scale);
+                chimney.castShadow = true;
+                cottage.add(chimney);
+
+                cottage.position.set(x, 0, z);
+                return cottage;
+            }
+
+            // Add cottages
+            globeGroup.add(createCottage(-2.5, -1, 1, 0xc41e3a));
+            globeGroup.add(createCottage(2, -1.5, 0.8, 0x0f8a3e));
+            globeGroup.add(createCottage(0, -2.5, 1.1, 0xc41e3a));
+            globeGroup.add(createCottage(-1, 1.5, 0.7, 0x0f8a3e));
+            globeGroup.add(createCottage(2.5, 1, 0.9, 0xffd700));
+
+            // Create Christmas trees
+            function createTree(x, z, scale) {
+                const tree = new THREE.Group();
+
+                // Trunk
+                const trunkGeometry = new THREE.CylinderGeometry(0.1 * scale, 0.15 * scale, 0.5 * scale, 8);
+                const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a3728 });
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.y = 0.25 * scale;
+                trunk.castShadow = true;
+                tree.add(trunk);
+
+                // Tree layers
+                const layerMaterial = new THREE.MeshStandardMaterial({ color: 0x0f8a3e });
+                const layers = 3;
+                for (let i = 0; i < layers; i++) {
+                    const layerGeometry = new THREE.ConeGeometry(
+                        (0.8 - i * 0.2) * scale,
+                        0.8 * scale,
+                        8
+                    );
+                    const layer = new THREE.Mesh(layerGeometry, layerMaterial);
+                    layer.position.y = (0.5 + i * 0.5) * scale;
+                    layer.castShadow = true;
+                    tree.add(layer);
+                }
+
+                // Star on top
+                const starGeometry = new THREE.SphereGeometry(0.15 * scale, 8, 8);
+                const starMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffd700,
+                    emissive: 0xffd700,
+                    emissiveIntensity: 0.8
+                });
+                const star = new THREE.Mesh(starGeometry, starMaterial);
+                star.position.y = (2 + 0.3) * scale;
+                tree.add(star);
+
+                tree.position.set(x, 0, z);
+                return tree;
+            }
+
+            // Add trees
+            globeGroup.add(createTree(-3.5, 2, 0.8));
+            globeGroup.add(createTree(3.5, -2.5, 0.7));
+            globeGroup.add(createTree(1, 2.5, 0.6));
+            globeGroup.add(createTree(-2, -3, 0.75));
+
+            // Create candy canes
+            function createCandyCane(x, z, scale, rotation) {
+                const candyCane = new THREE.Group();
+
+                // Straight part
+                const straightGeometry = new THREE.CylinderGeometry(0.1 * scale, 0.1 * scale, 1.2 * scale, 8);
+                const candyMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xff0000,
+                    roughness: 0.3
+                });
+                const straight = new THREE.Mesh(straightGeometry, candyMaterial);
+                straight.position.y = 0.6 * scale;
+                straight.castShadow = true;
+                candyCane.add(straight);
+
+                // Curved part
+                const curveGeometry = new THREE.TorusGeometry(0.25 * scale, 0.1 * scale, 8, 16, Math.PI);
+                const curve = new THREE.Mesh(curveGeometry, candyMaterial);
+                curve.position.y = 1.2 * scale;
+                curve.rotation.z = Math.PI / 2;
+                curve.castShadow = true;
+                candyCane.add(curve);
+
+                // White stripes (simplified)
+                const stripeGeometry = new THREE.CylinderGeometry(0.11 * scale, 0.11 * scale, 0.15 * scale, 8);
+                const stripeMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+                for (let i = 0; i < 3; i++) {
+                    const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
+                    stripe.position.y = 0.3 * scale + i * 0.4 * scale;
+                    candyCane.add(stripe);
+                }
+
+                candyCane.position.set(x, 0, z);
+                candyCane.rotation.y = rotation;
+                return candyCane;
+            }
+
+            // Add candy canes
+            globeGroup.add(createCandyCane(-4, -1.5, 0.8, 0.3));
+            globeGroup.add(createCandyCane(4, 0.5, 0.8, -0.5));
+
+            // Glass sphere (snow globe)
+            const sphereGeometry = new THREE.SphereGeometry(6, 32, 32);
+            const sphereMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.15,
+                roughness: 0.1,
+                metalness: 0.1,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+                envMapIntensity: 1,
+                side: THREE.DoubleSide
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.y = 4;
+            globeGroup.add(sphere);
+
+            // Snow particle system - SNOWGLOBE PHYSICS
+            const particleCount = window.innerWidth < 768 ? 500 : 800;
+            const particles = [];
+            const particleGeometry = new THREE.SphereGeometry(0.05, 6, 6);
+            const particleMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.8,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.3
+            });
+
+            const globeCenter = { x: 0, y: 4, z: 0 };
+            const globeRadius = 5.5;
+            const groundY = 0.15; // Slightly above ground to prevent clipping
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+
+                // Initialize particles randomly throughout the globe
+                const radius = Math.random() * globeRadius;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+
+                particle.position.x = radius * Math.sin(phi) * Math.cos(theta);
+                particle.position.y = globeCenter.y + radius * Math.cos(phi);
+                particle.position.z = radius * Math.sin(phi) * Math.sin(theta);
+
+                // Start with no velocity (settled state)
+                particle.velocity = {
+                    x: 0,
+                    y: 0,
+                    z: 0
+                };
+
+                particle.settled = false; // Track if particle has settled
+
+                particles.push(particle);
+                globeGroup.add(particle);
+            }
+
+            // Shake animation state
+            let isShaking = false;
+            let shakeTime = 0;
+            let shakeTimer = 0;
+            const shakeDuration = 1.5;
+            const shakeInterval = 15.0; // Auto-shake every 15 seconds
+
+            function shakeGlobe() {
+                isShaking = true;
+                shakeTime = 0;
+                shakeTimer = 0;
+
+                // Agitate all particles with random velocities
+                particles.forEach(particle => {
+                    const force = 0.4;
+                    particle.velocity.x = (Math.random() - 0.5) * force;
+                    particle.velocity.y = Math.random() * force * 0.8; // More upward motion
+                    particle.velocity.z = (Math.random() - 0.5) * force;
+                    particle.settled = false;
+                });
+            }
+
+            // User interaction - click/tap to shake
+            const container = document.getElementById('canvas-container');
+            container.addEventListener('click', shakeGlobe);
+            container.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                shakeGlobe();
+            });
+
+            // Animation loop
+            let time = 0;
+            function animate() {
+                requestAnimationFrame(animate);
+                const deltaTime = 0.016; // ~60fps
+                time += deltaTime;
+                shakeTimer += deltaTime;
+
+                // Auto-shake every interval
+                if (shakeTimer >= shakeInterval) {
+                    shakeGlobe();
+                }
+
+                // Shake animation for the globe itself
+                if (isShaking) {
+                    shakeTime += deltaTime;
+                    const shakeProgress = shakeTime / shakeDuration;
+
+                    if (shakeProgress < 1) {
+                        const shakeIntensity = Math.sin(shakeProgress * Math.PI * 10) * (1 - shakeProgress) * 0.15;
+                        globeGroup.rotation.z = shakeIntensity;
+                        globeGroup.rotation.x = shakeIntensity * 0.5;
+                    } else {
+                        isShaking = false;
+                        globeGroup.rotation.z = 0;
+                        globeGroup.rotation.x = 0;
+                    }
+                }
+
+                // Gentle rotation when not shaking
+                if (!isShaking) {
+                    globeGroup.rotation.y += 0.002;
+                }
+
+                // Update particles with snowglobe physics
+                particles.forEach(particle => {
+                    // Skip physics if particle is settled at bottom
+                    if (particle.settled) {
+                        return;
+                    }
+
+                    // Apply gravity
+                    particle.velocity.y -= 0.0008;
+
+                    // Apply air resistance/damping
+                    particle.velocity.x *= 0.985;
+                    particle.velocity.y *= 0.99;
+                    particle.velocity.z *= 0.985;
+
+                    // Swirl effect when moving
+                    const speed = Math.sqrt(
+                        particle.velocity.x ** 2 +
+                        particle.velocity.y ** 2 +
+                        particle.velocity.z ** 2
+                    );
+
+                    if (speed > 0.001) {
+                        const swirlStrength = 0.0015;
+                        particle.velocity.x += Math.sin(time * 3 + particle.position.y) * swirlStrength;
+                        particle.velocity.z += Math.cos(time * 3 + particle.position.y) * swirlStrength;
+                    }
+
+                    // Apply velocity
+                    particle.position.x += particle.velocity.x;
+                    particle.position.y += particle.velocity.y;
+                    particle.position.z += particle.velocity.z;
+
+                    // Check boundary collision with sphere
+                    const distFromCenter = Math.sqrt(
+                        (particle.position.x - globeCenter.x) ** 2 +
+                        (particle.position.y - globeCenter.y) ** 2 +
+                        (particle.position.z - globeCenter.z) ** 2
+                    );
+
+                    // Bounce off globe walls
+                    if (distFromCenter > globeRadius - 0.1) {
+                        // Calculate normal vector
+                        const normal = {
+                            x: (particle.position.x - globeCenter.x) / distFromCenter,
+                            y: (particle.position.y - globeCenter.y) / distFromCenter,
+                            z: (particle.position.z - globeCenter.z) / distFromCenter
+                        };
+
+                        // Move particle back inside
+                        const penetration = distFromCenter - (globeRadius - 0.1);
+                        particle.position.x -= normal.x * penetration;
+                        particle.position.y -= normal.y * penetration;
+                        particle.position.z -= normal.z * penetration;
+
+                        // Reflect velocity with damping
+                        const dotProduct =
+                            particle.velocity.x * normal.x +
+                            particle.velocity.y * normal.y +
+                            particle.velocity.z * normal.z;
+
+                        particle.velocity.x -= 2 * dotProduct * normal.x * 0.5;
+                        particle.velocity.y -= 2 * dotProduct * normal.y * 0.5;
+                        particle.velocity.z -= 2 * dotProduct * normal.z * 0.5;
+                    }
+
+                    // Ground collision - settle particles
+                    if (particle.position.y <= groundY) {
+                        particle.position.y = groundY;
+                        particle.velocity.y = 0;
+
+                        // Settle if velocity is low enough
+                        if (speed < 0.005) {
+                            particle.velocity.x = 0;
+                            particle.velocity.z = 0;
+                            particle.settled = true;
+                        } else {
+                            // Bounce with energy loss
+                            particle.velocity.y = Math.abs(particle.velocity.y) * 0.3;
+                            particle.velocity.x *= 0.7;
+                            particle.velocity.z *= 0.7;
+                        }
+                    }
+
+                    // Rotate particles for visual effect
+                    particle.rotation.x += 0.01;
+                    particle.rotation.y += 0.01;
+                });
+
+                renderer.render(scene, camera);
+            }
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Initial shake to start the animation
+            setTimeout(() => shakeGlobe(), 500);
+
+            // Start animation
+            animate();
+        }
+    </script>
+</body>
+</html>
