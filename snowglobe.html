@@ -21,7 +21,7 @@
     text-shadow:0 0 16px rgba(255,214,120,.85), 0 0 42px rgba(255,170,60,.45), 0 2px 6px rgba(0,0,0,.6);
   }
   .wrap { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; }
-  .globe { position:relative; width:min(78vw,400px); aspect-ratio:1/1.16; -webkit-user-select:none; -webkit-touch-callout:none; user-select:none; }
+  .globe { position:relative; width:min(78vw,400px); aspect-ratio:1/1.16; -webkit-user-select:none; -webkit-touch-callout:none; user-select:none; touch-action:none; }
   .globe.shaking { animation: shake .7s cubic-bezier(.36,.07,.19,.97); }
   @keyframes shake {
     0%,100% { transform:rotate(0) translateX(0); }
@@ -35,6 +35,7 @@
   .ball {
     position:absolute; top:0; left:50%; transform:translateX(-50%);
     width:100%; aspect-ratio:1/1; border-radius:50%; overflow:hidden;
+    clip-path:circle(50% at 50% 50%); -webkit-clip-path:circle(50% at 50% 50%);
     background: radial-gradient(circle at 34% 24%, rgba(182,210,245,.26), rgba(136,170,224,.09) 38%, rgba(44,68,100,.22) 68%, rgba(16,26,40,.52) 100%);
     box-shadow:
       inset 0 0 0 1px rgba(212,226,245,.24),
@@ -58,18 +59,23 @@
     pointer-events:none; z-index:4;
   }
   .ball:active { cursor:grabbing; }
-  .scene { position:absolute; inset:0; }
+  .scene { position:absolute; inset:0; transform-origin:50% 88%; will-change:transform; }
   .scene svg { position:absolute; inset:0; width:100%; height:100%; }
+  #skycv, #fogcv, #glasscv { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #skycv { z-index:0; transform:scale(1.08); will-change:transform; }
+  .scene { z-index:1; }
+  #fogcv { z-index:2; }
+  #glasscv { z-index:3; }
   #auroracv, #treecv, #snow { position:absolute; inset:0; width:100%; height:100%; }
   .glare {
     position:absolute; top:9%; left:14%; width:34%; height:22%; border-radius:50%;
     background: radial-gradient(ellipse at 40% 40%, rgba(255,255,255,.70), rgba(255,255,255,0) 70%);
-    transform:rotate(-22deg); pointer-events:none; filter:blur(1px);
+    transform:rotate(-22deg); pointer-events:none; filter:blur(1px); z-index:4;
   }
   .glare2 {
     position:absolute; bottom:12%; right:12%; width:16%; height:9%; border-radius:50%;
     background: radial-gradient(ellipse, rgba(255,255,255,.28), rgba(255,255,255,0) 70%);
-    transform:rotate(-20deg); pointer-events:none;
+    transform:rotate(-20deg); pointer-events:none; z-index:4;
   }
   .base-halo {
     position:absolute; bottom:-2.2%; left:50%; transform:translateX(-50%);
@@ -110,6 +116,7 @@
   }
   #bgm-hint { right:18px; }
   #lamp-btn { left:18px; }
+  #sky-btn { left:18px; bottom:64px; }
 </style>
 </head>
 <body>
@@ -118,20 +125,22 @@
 <div class="wrap">
   <div class="globe" id="globe">
     <div class="ball" id="ball">
-      <div class="scene">
+      <canvas id="skycv"></canvas>
+      <div class="scene" id="scene">
         <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMax meet">
           <defs>
             <linearGradient id="snowGradBack" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#b4c4d8"/>
-              <stop offset="55%" stop-color="#8b9db4"/>
-              <stop offset="100%" stop-color="#66788e"/>
+              <stop id="gb-stop0" offset="0%" stop-color="#b4c4d8"/>
+              <stop id="gb-stop1" offset="55%" stop-color="#8b9db4"/>
+              <stop id="gb-stop2" offset="100%" stop-color="#66788e"/>
             </linearGradient>
             <linearGradient id="snowGradFront" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#c2cfe0"/>
-              <stop offset="52%" stop-color="#9db0c7"/>
-              <stop offset="100%" stop-color="#77899f"/>
+              <stop id="gf-stop0" offset="0%" stop-color="#c2cfe0"/>
+              <stop id="gf-stop1" offset="52%" stop-color="#9db0c7"/>
+              <stop id="gf-stop2" offset="100%" stop-color="#77899f"/>
             </linearGradient>
           </defs>
+          <ellipse id="snow-ground-skirt" cx="100" cy="190" rx="84" ry="12" fill="url(#snowGradBack)"/>
           <ellipse id="snow-ground-back" cx="100" cy="178" rx="80" ry="15" fill="url(#snowGradBack)"/>
           <ellipse id="snow-ground-front" cx="100" cy="174" rx="68" ry="11" fill="url(#snowGradFront)"/>
         </svg>
@@ -139,6 +148,8 @@
         <canvas id="treecv"></canvas>
         <canvas id="snow"></canvas>
       </div>
+      <canvas id="fogcv"></canvas>
+      <canvas id="glasscv"></canvas>
       <div class="glare"></div>
       <div class="glare2"></div>
     </div>
@@ -147,12 +158,21 @@
   </div>
   <div class="hint">🫧 <b>摇一摇 / 点一点球</b> 下大雪·积雪变厚</div>
 </div>
+<div id="sky-btn" class="fab">🌗 极夜</div>
 <div id="lamp-btn" class="fab">💡 灯色</div>
 <div id="bgm-hint" class="fab">🔊 点击开启音乐</div>
 <audio id="bgm" src="bgm2.mp3" loop muted preload="auto"></audio>
 <script>
 (function(){
   var ball=document.getElementById('ball'), cv=document.getElementById('snow'), ctx=cv.getContext('2d');
+  var sceneEl=document.getElementById('scene');
+  var skycv=document.getElementById('skycv'), sctx=skycv.getContext('2d');
+  var fogcv=document.getElementById('fogcv'), fctx=fogcv.getContext('2d');
+  var glasscv=document.getElementById('glasscv'), gctx=glasscv.getContext('2d');
+  var skyBlurLayer=document.createElement('canvas'); skyBlurLayer.width=160; skyBlurLayer.height=160;
+  var sbctx=skyBlurLayer.getContext('2d');
+  var horizonMistLayer=document.createElement('canvas'); horizonMistLayer.width=160; horizonMistLayer.height=48;
+  var hmctx=horizonMistLayer.getContext('2d');
   var W=0,H=0,CX=0,CY=0,R=0, flakes=[], boost=0, lamps=[], accum=0.35, lampMode=0, lastRedraw=0;
   var chimneys=[], windows=[], smokes=[], snowmanProg=0, snowmanTarget=0, hatProg=0, lastTreeAccum=accum;
   var acv=document.getElementById('auroracv'), actx=acv.getContext('2d');
@@ -161,6 +181,8 @@
   var mountainLayer=document.createElement('canvas'), mlctx=mountainLayer.getContext('2d');
   var snowTexLayer=document.createElement('canvas'), stctx=snowTexLayer.getContext('2d');
   var groundBack=document.getElementById('snow-ground-back'), groundFront=document.getElementById('snow-ground-front');
+  var gbStops=[document.getElementById('gb-stop0'),document.getElementById('gb-stop1'),document.getElementById('gb-stop2')];
+  var gfStops=[document.getElementById('gf-stop0'),document.getElementById('gf-stop1'),document.getElementById('gf-stop2')];
   var skirtPuffs=[], houseSpecs=[], giftSpecs=[], lampSpec=null, shakeStart=-9999, shakeActive=false;
   var audioCtx=null, analyser=null, freqData=null, audioInited=false;
   var musicBass=0, musicEnergy=0, auroraPhase=0, lastTickNow=0;
@@ -175,12 +197,172 @@
     {hat:'#1f3a6e', band:'#ffd75e', scarf:'#2b549e', tail:'#1e3d78'}
   ];
   var snowmanOutfit=0, snowmanBounceStart=-9999, snowmanBounceActive=false, SNOWMAN_BOUNCE_DUR=380;
-  var fogLevel=1, fogGrad=null;
+  var fogLevel=1, fogGrad=null, lastFogOp=-1;
+  var snowSwirl=0;
   var lightRain=[], MAX_LIGHT_RAIN=5;
   var treePulseStart=-9999, treePulseActive=false, TREE_PULSE_DUR=520;
   var baseHalo=document.getElementById('base-halo');
+  var skyMode=0, skyTransActive=false;
+  var SKY_NAMES=['极夜','黄昏','黎明'];
+  var SKY_THEMES=[
+    { // 0: 极夜（冷蓝）
+      skyTop:[10,21,38], skyUpper:[22,38,63], skyHoriz:[44,68,100], skyLow:[23,38,60], skyBot:[6,10,18],
+      glowCol:[150,190,235], glowA:0.18, cloudCol:[112,148,196], cloudA:0.14,
+      mistCol:[118,158,208], mistA:0.26,
+      gb0:[180,196,216], gb1:[139,157,180], gb2:[102,120,142],
+      gf0:[194,207,224], gf1:[157,176,199], gf2:[119,137,159],
+      skTop:[194,207,224], skMid:[159,177,199], skBot:[119,137,159],
+      treeTint:[136,170,224], treeTintA:0,
+      bodyTop:[30,50,80], bodyMid:[16,26,40], bodyBot:[6,10,18],
+      moonVis:0.92, auroraVis:1.0, starVis:1.0, duskMix:0, dawnMix:0
+    },
+    { // 1: 黄昏（橙紫暖调）
+      skyTop:[28,22,58], skyUpper:[78,44,92], skyHoriz:[194,104,88], skyLow:[86,48,74], skyBot:[22,14,34],
+      glowCol:[255,166,104], glowA:0.32, cloudCol:[226,132,126], cloudA:0.22,
+      mistCol:[214,142,148], mistA:0.30,
+      gb0:[218,196,210], gb1:[168,142,166], gb2:[116,94,120],
+      gf0:[228,208,220], gf1:[184,158,182], gf2:[132,110,136],
+      skTop:[228,208,220], skMid:[184,158,182], skBot:[132,110,136],
+      treeTint:[235,146,120], treeTintA:0.12,
+      bodyTop:[58,34,68], bodyMid:[28,18,38], bodyBot:[11,7,18],
+      moonVis:0.42, auroraVis:0.34, starVis:0.48, duskMix:1, dawnMix:0
+    },
+    { // 2: 黎明（淡青冷调）
+      skyTop:[22,52,82], skyUpper:[58,108,140], skyHoriz:[144,198,214], skyLow:[62,98,124], skyBot:[20,38,56],
+      glowCol:[196,238,248], glowA:0.28, cloudCol:[170,218,232], cloudA:0.22,
+      mistCol:[168,214,228], mistA:0.30,
+      gb0:[210,228,238], gb1:[160,188,202], gb2:[114,144,162],
+      gf0:[220,236,244], gf1:[174,200,214], gf2:[128,158,176],
+      skTop:[220,236,244], skMid:[174,200,214], skBot:[128,158,176],
+      treeTint:[168,224,240], treeTintA:0.10,
+      bodyTop:[32,64,88], bodyMid:[16,35,52], bodyBot:[7,16,26],
+      moonVis:0.26, auroraVis:0.28, starVis:0.28, duskMix:0, dawnMix:1
+    }
+  ];
+  function cloneTheme(src){
+    var out={};
+    for(var k in src){
+      out[k]=Array.isArray(src[k])? src[k].slice() : src[k];
+    }
+    return out;
+  }
+  var skyState=cloneTheme(SKY_THEMES[0]);
+  var tiltX=0, tiltY=0, tiltRot=0, tiltXTarget=0, tiltYTarget=0, tiltRotTarget=0;
+  var sceneZoom=1, sceneZoomTarget=1, lastTransformStr='';
   var seed=7;
   function rnd(){ seed=(seed*9301+49297)%233280; return seed/233280; }
+  function lerpRgbArr(cur, dst, t){
+    cur[0]+=(dst[0]-cur[0])*t; cur[1]+=(dst[1]-cur[1])*t; cur[2]+=(dst[2]-cur[2])*t;
+  }
+  function rgbStr(a, alpha){
+    var r=Math.round(a[0]), g=Math.round(a[1]), b=Math.round(a[2]);
+    return alpha===undefined? ('rgb('+r+','+g+','+b+')') : ('rgba('+r+','+g+','+b+','+alpha+')');
+  }
+  function drawSkyBackdrop(){
+    var SW=skyBlurLayer.width, SH=skyBlurLayer.height;
+    var g=sbctx.createLinearGradient(0,0,0,SH);
+    g.addColorStop(0.00, rgbStr(skyState.skyTop));
+    g.addColorStop(0.36, rgbStr(skyState.skyUpper));
+    g.addColorStop(0.68, rgbStr(skyState.skyHoriz));
+    g.addColorStop(0.84, rgbStr(skyState.skyLow));
+    g.addColorStop(1.00, rgbStr(skyState.skyBot));
+    sbctx.fillStyle=g;
+    sbctx.fillRect(0,0,SW,SH);
+    // 多层柔和模糊大气光斑，模拟 polar 的 backgroundBlurriness=0.55
+    var g2=sbctx.createRadialGradient(SW*0.28,SH*0.36,4,SW*0.28,SH*0.36,SW*0.72);
+    g2.addColorStop(0, rgbStr(skyState.glowCol, skyState.glowA.toFixed(3)));
+    g2.addColorStop(0.55, rgbStr(skyState.glowCol, (skyState.glowA*0.38).toFixed(3)));
+    g2.addColorStop(1, rgbStr(skyState.glowCol, 0));
+    sbctx.fillStyle=g2;
+    sbctx.fillRect(0,0,SW,SH);
+    var g3=sbctx.createRadialGradient(SW*0.66,SH*0.64,4,SW*0.66,SH*0.64,SW*0.62);
+    g3.addColorStop(0, rgbStr(skyState.cloudCol, skyState.cloudA.toFixed(3)));
+    g3.addColorStop(0.6, rgbStr(skyState.cloudCol, (skyState.cloudA*0.35).toFixed(3)));
+    g3.addColorStop(1, rgbStr(skyState.cloudCol, 0));
+    sbctx.fillStyle=g3;
+    sbctx.fillRect(0,0,SW,SH);
+    if(W>0 && H>0){
+      sctx.clearRect(0,0,W,H);
+      sctx.imageSmoothingEnabled=true;
+      sctx.drawImage(skyBlurLayer,0,0,W,H);
+    }
+  }
+  function buildHorizonMist(){
+    var MW=horizonMistLayer.width, MH=horizonMistLayer.height;
+    hmctx.clearRect(0,0,MW,MH);
+    var hg=hmctx.createLinearGradient(0,0,MW,0);
+    var ma=skyState.mistA;
+    hg.addColorStop(0.00, rgbStr(skyState.mistCol, 0));
+    hg.addColorStop(0.22, rgbStr(skyState.mistCol, (ma*0.85).toFixed(3)));
+    hg.addColorStop(0.50, rgbStr(skyState.mistCol, ma.toFixed(3)));
+    hg.addColorStop(0.78, rgbStr(skyState.mistCol, (ma*0.85).toFixed(3)));
+    hg.addColorStop(1.00, rgbStr(skyState.mistCol, 0));
+    hmctx.fillStyle=hg;
+    hmctx.fillRect(0,0,MW,MH);
+    hmctx.save();
+    hmctx.globalCompositeOperation='destination-in';
+    var vg=hmctx.createLinearGradient(0,0,0,MH);
+    vg.addColorStop(0.00, 'rgba(255,255,255,0)');
+    vg.addColorStop(0.42, 'rgba(255,255,255,0.92)');
+    vg.addColorStop(0.70, 'rgba(255,255,255,0.72)');
+    vg.addColorStop(1.00, 'rgba(255,255,255,0)');
+    hmctx.fillStyle=vg;
+    hmctx.fillRect(0,0,MW,MH);
+    hmctx.restore();
+  }
+  function applySkyThemeToDOM(){
+    if(gbStops[0]) gbStops[0].setAttribute('stop-color', rgbStr(skyState.gb0));
+    if(gbStops[1]) gbStops[1].setAttribute('stop-color', rgbStr(skyState.gb1));
+    if(gbStops[2]) gbStops[2].setAttribute('stop-color', rgbStr(skyState.gb2));
+    if(gfStops[0]) gfStops[0].setAttribute('stop-color', rgbStr(skyState.gf0));
+    if(gfStops[1]) gfStops[1].setAttribute('stop-color', rgbStr(skyState.gf1));
+    if(gfStops[2]) gfStops[2].setAttribute('stop-color', rgbStr(skyState.gf2));
+    document.body.style.background='radial-gradient(ellipse at 50% 18%, '+rgbStr(skyState.bodyTop)+' 0%, '+rgbStr(skyState.bodyMid)+' 48%, '+rgbStr(skyState.bodyBot)+' 100%)';
+  }
+  function drawGlassLayer(){
+    gctx.clearRect(0,0,W,H);
+    gctx.save();
+    gctx.beginPath(); gctx.arc(CX,CY,R,0,6.2832); gctx.clip();
+    // 内壁淡蓝折射高光环（Fresnel 菲涅尔内壁折射感）
+    var ir=gctx.createRadialGradient(CX,CY,R*0.76,CX,CY,R);
+    ir.addColorStop(0,'rgba(176,214,250,0)');
+    ir.addColorStop(0.58,'rgba(176,214,250,0.06)');
+    ir.addColorStop(0.86,'rgba(202,230,255,0.20)');
+    ir.addColorStop(0.96,'rgba(225,242,255,0.26)');
+    ir.addColorStop(1.00,'rgba(148,196,245,0.08)');
+    gctx.fillStyle=ir;
+    gctx.fillRect(0,0,W,H);
+    // 左上来光方向环境反射亮弧
+    var arcR=R-Math.max(3,W*0.011);
+    var hiG=gctx.createLinearGradient(CX-R*0.88,CY-R*0.88,CX+R*0.20,CY+R*0.20);
+    hiG.addColorStop(0,'rgba(235,247,255,0.42)');
+    hiG.addColorStop(0.45,'rgba(196,226,255,0.22)');
+    hiG.addColorStop(1,'rgba(196,226,255,0)');
+    gctx.lineCap='round';
+    gctx.strokeStyle=hiG;
+    gctx.lineWidth=Math.max(4,W*0.022);
+    gctx.beginPath(); gctx.arc(CX,CY,arcR,Math.PI*0.92,Math.PI*1.58); gctx.stroke();
+    gctx.strokeStyle='rgba(255,255,255,0.34)';
+    gctx.lineWidth=Math.max(1.2,W*0.005);
+    gctx.beginPath(); gctx.arc(CX,CY,R-Math.max(1.8,W*0.006),Math.PI*1.00,Math.PI*1.50); gctx.stroke();
+    // 右下暗弧（玻璃球厚度与环境背光暗边）
+    var dkG=gctx.createLinearGradient(CX-R*0.15,CY-R*0.15,CX+R*0.90,CY+R*0.90);
+    dkG.addColorStop(0,'rgba(8,16,30,0)');
+    dkG.addColorStop(0.55,'rgba(10,18,32,0.28)');
+    dkG.addColorStop(1,'rgba(6,12,24,0.44)');
+    gctx.strokeStyle=dkG;
+    gctx.lineWidth=Math.max(5,W*0.028);
+    gctx.beginPath(); gctx.arc(CX,CY,R-Math.max(2.5,W*0.009),-0.06*Math.PI,0.56*Math.PI); gctx.stroke();
+    // 右下内壁淡蓝二次折射高光弧
+    var caG=gctx.createLinearGradient(CX,CY+R*0.4,CX+R*0.85,CY+R*0.85);
+    caG.addColorStop(0,'rgba(182,222,255,0)');
+    caG.addColorStop(0.5,'rgba(198,232,255,0.22)');
+    caG.addColorStop(1,'rgba(182,222,255,0)');
+    gctx.strokeStyle=caG;
+    gctx.lineWidth=Math.max(2,W*0.010);
+    gctx.beginPath(); gctx.arc(CX,CY,R*0.93,0.12*Math.PI,0.44*Math.PI); gctx.stroke();
+    gctx.restore();
+  }
 
   function updateGroundSnow(){
     var ex=Math.max(0,(accum-0.35)/0.65);
@@ -199,16 +381,15 @@
   function buildDistantMountains(){
     mlctx.clearRect(0,0,W,H);
     mlctx.save();
-    mlctx.beginPath(); mlctx.arc(CX,CY,R,0,6.2832); mlctx.clip();
     var hasFilter=('filter' in mlctx);
     if(hasFilter) mlctx.filter='blur('+Math.max(1.5,W*0.0065).toFixed(1)+'px)';
     var ridges=[
       {
-        pts:[[0.02,0.83],[0.13,0.68],[0.24,0.74],[0.35,0.61],[0.46,0.70],[0.56,0.63],[0.69,0.73],[0.81,0.62],[0.92,0.71],[1.0,0.82]],
+        pts:[[-0.06,0.84],[0.02,0.83],[0.13,0.68],[0.24,0.74],[0.35,0.61],[0.46,0.70],[0.56,0.63],[0.69,0.73],[0.81,0.62],[0.92,0.71],[1.06,0.83]],
         topCol:'rgba(34,54,84,0.56)', botCol:'rgba(16,26,40,0.18)', rimCol:'rgba(182,210,245,0.11)', baseY:0.89
       },
       {
-        pts:[[0.00,0.86],[0.10,0.74],[0.21,0.79],[0.31,0.69],[0.44,0.77],[0.58,0.71],[0.71,0.78],[0.84,0.69],[0.95,0.77],[1.02,0.86]],
+        pts:[[-0.06,0.87],[0.00,0.86],[0.10,0.74],[0.21,0.79],[0.31,0.69],[0.44,0.77],[0.58,0.71],[0.71,0.78],[0.84,0.69],[0.95,0.77],[1.06,0.86]],
         topCol:'rgba(24,40,64,0.62)', botCol:'rgba(16,26,40,0.22)', rimCol:'rgba(168,198,236,0.10)', baseY:0.90
       }
     ];
@@ -243,6 +424,15 @@
     mist.addColorStop(1,'rgba(16,26,40,0)');
     mlctx.fillStyle=mist;
     mlctx.fillRect(0,H*0.72,W,H*0.20);
+    // 水平边缘柔化，避免缩放至 0.85 或倾斜时出现切边
+    mlctx.globalCompositeOperation='destination-in';
+    var edgeF=mlctx.createLinearGradient(0,0,W,0);
+    edgeF.addColorStop(0,'rgba(255,255,255,0)');
+    edgeF.addColorStop(0.12,'rgba(255,255,255,1)');
+    edgeF.addColorStop(0.88,'rgba(255,255,255,1)');
+    edgeF.addColorStop(1,'rgba(255,255,255,0)');
+    mlctx.fillStyle=edgeF;
+    mlctx.fillRect(0,0,W,H);
     mlctx.restore();
   }
 
@@ -282,16 +472,26 @@
     var r=ball.getBoundingClientRect();
     W=cv.width=Math.max(10,r.width); H=cv.height=Math.max(10,r.height);
     CX=W/2; CY=H/2; R=W/2;
+    skycv.width=W; skycv.height=H;
+    fogcv.width=W; fogcv.height=H;
+    glasscv.width=W; glasscv.height=H;
     acv.width=W; acv.height=H;
     tcv.width=W; tcv.height=H;
     treeLayer.width=W; treeLayer.height=H;
     mountainLayer.width=W; mountainLayer.height=H;
     snowTexLayer.width=W; snowTexLayer.height=H;
-    fogGrad=ctx.createRadialGradient(CX,CY,R*0.36,CX,CY,R*1.02);
+    fogGrad=fctx.createRadialGradient(CX,CY,R*0.36,CX,CY,R*1.02);
     fogGrad.addColorStop(0,'rgba(182,210,245,0)');
     fogGrad.addColorStop(0.55,'rgba(182,210,245,0.03)');
     fogGrad.addColorStop(0.84,'rgba(194,218,246,0.12)');
     fogGrad.addColorStop(1,'rgba(212,226,245,0.21)');
+    fctx.clearRect(0,0,W,H);
+    fctx.fillStyle=fogGrad;
+    fctx.fillRect(0,0,W,H);
+    lastFogOp=-1;
+    drawSkyBackdrop();
+    buildHorizonMist();
+    drawGlassLayer();
     buildDistantMountains();
     buildSnowSpeckles();
     drawTree();
@@ -382,7 +582,9 @@
     tctx.clearRect(0,0,W,H);
     var cx=W/2, baseY=H*0.875, treeH=H*0.60;
     var g0=tctx.createRadialGradient(cx,baseY-treeH*0.45,6,cx,baseY-treeH*0.45,treeH*0.92);
-    g0.addColorStop(0,'rgba(182,210,245,0.20)'); g0.addColorStop(0.5,'rgba(136,170,224,0.08)'); g0.addColorStop(1,'rgba(16,26,40,0)');
+    g0.addColorStop(0, rgbStr(skyState.glowCol, (0.20+0.06*skyState.duskMix+0.04*skyState.dawnMix).toFixed(3)));
+    g0.addColorStop(0.5, rgbStr(skyState.cloudCol, 0.09));
+    g0.addColorStop(1,'rgba(16,26,40,0)');
     tctx.fillStyle=g0; tctx.fillRect(0,0,W,H);
     tctx.drawImage(snowTexLayer,0,0);
     var ex=Math.max(0,(accum-0.35)/0.65);
@@ -400,8 +602,8 @@
     tctx.drawImage(treeLayer, 2, 0);
     tctx.restore();
     var refFade=tctx.createLinearGradient(0, baseY-treeH*0.02, 0, H*0.98);
-    refFade.addColorStop(0,'rgba(156,175,198,0)');
-    refFade.addColorStop(1,'rgba(119,137,159,0.52)');
+    refFade.addColorStop(0, rgbStr(skyState.skMid, 0));
+    refFade.addColorStop(1, rgbStr(skyState.skBot, 0.52));
     tctx.fillStyle=refFade;
     tctx.fillRect(cx-W*0.45, baseY-treeH*0.03, W*0.90, H*0.18);
     tctx.restore();
@@ -417,24 +619,25 @@
     if(lampSpec){
       drawStreetLampPost(lampSpec.x, lampSpec.y, lampSpec.h, wob, p);
     }
-    // 冷蓝灰毛绒树裙（顶部亮 #c2cfe0 → 底部暗 #77899f，厚度/半径随 accum 微调）
+    // 毛绒树裙（随昼夜主题平滑过渡色调，厚度/半径随 accum 微调）
     var rx=treeH*(0.44+0.045*ex), ry=treeH*(0.075+0.028*ex), sy=baseY+treeH*(0.015-0.008*ex);
     var skGrd=tctx.createLinearGradient(0,sy-ry,0,sy+ry);
-    skGrd.addColorStop(0,'#c2cfe0');
-    skGrd.addColorStop(0.55,'#9fb1c7');
-    skGrd.addColorStop(1,'#77899f');
+    skGrd.addColorStop(0, rgbStr(skyState.skTop));
+    skGrd.addColorStop(0.55, rgbStr(skyState.skMid));
+    skGrd.addColorStop(1, rgbStr(skyState.skBot));
     tctx.fillStyle=skGrd;
     tctx.beginPath(); tctx.ellipse(cx,sy,rx,ry,0,0,6.2832); tctx.fill();
     if(ex>0.05){
       var skTop=tctx.createLinearGradient(0,sy-ry*0.90,0,sy+ry*0.54);
-      skTop.addColorStop(0,'rgba(212,226,245,'+(0.38+0.34*ex)+')');
-      skTop.addColorStop(1,'rgba(136,154,178,'+(0.18+0.20*ex)+')');
+      skTop.addColorStop(0, rgbStr(skyState.gf0, (0.38+0.34*ex).toFixed(3)));
+      skTop.addColorStop(1, rgbStr(skyState.skMid, (0.18+0.20*ex).toFixed(3)));
       tctx.fillStyle=skTop;
       tctx.beginPath(); tctx.ellipse(cx,sy-ry*0.18,rx*0.86,ry*0.72,0,0,6.2832); tctx.fill();
     }
+    var puffTop=rgbStr(skyState.skTop, 0.92), puffBot=rgbStr(skyState.skBot, 0.90);
     for(var i=0;i<skirtPuffs.length;i++){
       var sp=skirtPuffs[i], pyNorm=Math.sin(sp.a);
-      tctx.fillStyle=pyNorm<0 ? 'rgba(194,207,224,0.92)' : 'rgba(128,146,170,0.90)';
+      tctx.fillStyle=pyNorm<0 ? puffTop : puffBot;
       tctx.beginPath();
       tctx.arc(cx+rx*Math.cos(sp.a), sy+ry*pyNorm, sp.r*(1+0.42*ex),0,6.2832);
       tctx.fill();
@@ -452,6 +655,13 @@
       tctx.restore();
     } else {
       tctx.drawImage(treeLayer,0,0);
+    }
+    if(skyState.treeTintA>0.004){
+      tctx.save();
+      tctx.globalCompositeOperation='source-atop';
+      tctx.fillStyle=rgbStr(skyState.treeTint, skyState.treeTintA.toFixed(3));
+      tctx.fillRect(0,0,W,H);
+      tctx.restore();
     }
   }
   function drawSolidTier(cx,topY,halfW,lh,seedv){
@@ -541,15 +751,17 @@
     tlctx.beginPath(); tlctx.arc(ex,ey-1,(1.2+Math.random()*1.2)*(0.7+accum*0.8),0,6.2832); tlctx.fill();
   }
   function drawLamps(t, pulseP){
-    var palettes=[ ['#fff6da'],
+    var warmCol='rgb('+Math.round(255-27*skyState.dawnMix)+','+Math.round(246-34*skyState.duskMix+2*skyState.dawnMix)+','+Math.round(218-70*skyState.duskMix+37*skyState.dawnMix)+')';
+    var palettes=[ [warmCol],
                    ['#ff5d5d','#ffd75e','#7ec8ff','#ff9de2','#7dff9e'],
                    ['#ff4d4d','#ffd75e'],
-                   ['#fff6da','#ffd75e','#ff9de2','#7ec8ff'] ];
+                   [warmCol,'#ffd75e','#ff9de2','#7ec8ff'] ];
     var mode=lampMode%4;
     var pal=palettes[mode];
     var phase=(t*0.00055)%1;
     var pBoost=pulseP||0;
-    var mGlow=1+musicEnergy*0.35, mAlpha=1+musicEnergy*0.22, mRay=1+musicEnergy*0.12;
+    var toneMul=1-0.16*skyState.dawnMix+0.06*skyState.duskMix;
+    var mGlow=1+musicEnergy*0.35, mAlpha=(1+musicEnergy*0.22)*toneMul, mRay=1+musicEnergy*0.12;
     for(var i=0;i<lamps.length;i++){ var L=lamps[i];
       var tw;
       if(mode===3){
@@ -773,12 +985,14 @@
     return Math.round(a[0]+(b[0]-a[0])*t)+','+Math.round(a[1]+(b[1]-a[1])*t)+','+Math.round(a[2]+(b[2]-a[2])*t);
   }
   function drawMoon(t){
+    var mVis=skyState.moonVis;
+    if(mVis<=0.02) return;
     var mx=CX-R*0.44, my=CY-R*0.68, mr=Math.max(5.5,R*0.062);
     var breath=0.5+0.5*Math.sin((t||0)*0.0014);
     var haloR=mr*(3.35+0.25*breath);
     var hg=actx.createRadialGradient(mx,my,mr*0.35,mx,my,haloR);
-    hg.addColorStop(0,'rgba(255,246,216,'+(0.24+0.04*breath).toFixed(3)+')');
-    hg.addColorStop(0.42,'rgba(255,234,182,'+(0.09+0.02*breath).toFixed(3)+')');
+    hg.addColorStop(0,'rgba(255,246,216,'+((0.24+0.04*breath)*mVis).toFixed(3)+')');
+    hg.addColorStop(0.42,'rgba(255,234,182,'+((0.09+0.02*breath)*mVis).toFixed(3)+')');
     hg.addColorStop(1,'rgba(255,228,170,0)');
     actx.fillStyle=hg;
     actx.beginPath(); actx.arc(mx,my,haloR,0,6.2832); actx.fill();
@@ -787,7 +1001,7 @@
     mg.addColorStop(0.68,'#fff4d4');
     mg.addColorStop(1,'#f2dfb4');
     actx.save();
-    actx.globalAlpha=0.92;
+    actx.globalAlpha=mVis;
     actx.fillStyle=mg;
     actx.beginPath(); actx.arc(mx,my,mr,0,6.2832); actx.fill();
     actx.restore();
@@ -828,13 +1042,13 @@
   function drawAurora(t){
     actx.clearRect(0,0,W,H);
     actx.save();
-    actx.beginPath(); actx.arc(CX,CY,R,0,6.2832); actx.clip();
     drawMoon(t);
     var ex=Math.max(0,(accum-0.35)/0.65);
     var stormTarget=Math.min(1, ex*0.65+boost*0.65);
     auroraStormMix+=(stormTarget-auroraStormMix)*0.05;
-    var at=t+auroraPhase, beatA=(1+musicBass*0.95)*(1+auroraStormMix*0.38);
-    var refRgb0=null, refRgb1=null, refSx=0;
+    var aVis=skyState.auroraVis;
+    var at=t+auroraPhase, beatA=(1+musicBass*0.95)*(1+auroraStormMix*0.38)*aVis;
+    var refRgb0='72,235,175', refRgb1='85,215,235', refSx=0;
     for(var i=0;i<auroraBands.length;i++){
       var b=auroraBands[i];
       var sx=Math.sin(at*b.sp+b.ph)*W*b.amp;
@@ -843,6 +1057,7 @@
       var rgb2=mixRgb(b.g2,b.p2,auroraStormMix), rgb3=mixRgb(b.g3,b.p3,auroraStormMix);
       if(i===0){ refRgb0=rgb2; refSx=sx; }
       else if(i===1){ refRgb1=rgb3; }
+      if(aVis<=0.02) continue;
       var grd=actx.createLinearGradient(0,topY,0,botY);
       grd.addColorStop(0,b.c1);
       grd.addColorStop(0.38,'rgba('+rgb2+','+(b.a2*beatA).toFixed(3)+')');
@@ -862,47 +1077,45 @@
       actx.fill();
     }
     // 极光帷幕竖向柔和光柱
-    for(var ri=0;ri<auroraRays.length;ri++){
-      var ry=auroraRays[ri];
-      var sw=Math.sin(at*ry.sp+ry.ph)*R*0.055;
-      var rx=CX+R*ry.nx+sw;
-      var rTop=H*ry.y0+Math.cos(at*ry.sp*0.8+ry.ph)*H*0.012;
-      var rBot=rTop+H*ry.h;
-      var rw=W*ry.w;
-      var rayA=Math.min(0.16,ry.a*beatA);
-      var rgrd=actx.createLinearGradient(0,rTop,0,rBot);
-      rgrd.addColorStop(0,'rgba('+refRgb0+',0)');
-      rgrd.addColorStop(0.22,'rgba('+refRgb0+','+rayA.toFixed(3)+')');
-      rgrd.addColorStop(0.65,'rgba('+refRgb1+','+(rayA*0.55).toFixed(3)+')');
-      rgrd.addColorStop(1,'rgba('+refRgb1+',0)');
-      actx.fillStyle=rgrd;
-      var bx=rx+sw*0.45;
-      actx.globalAlpha=0.55;
-      actx.beginPath();
-      actx.moveTo(rx-rw,rTop); actx.lineTo(rx+rw,rTop);
-      actx.lineTo(bx+rw*0.85,rBot); actx.lineTo(bx-rw*0.85,rBot);
-      actx.closePath(); actx.fill();
-      actx.globalAlpha=0.65;
-      actx.beginPath();
-      actx.moveTo(rx-rw*0.44,rTop); actx.lineTo(rx+rw*0.44,rTop);
-      actx.lineTo(bx+rw*0.38,rBot); actx.lineTo(bx-rw*0.38,rBot);
-      actx.closePath(); actx.fill();
+    if(aVis>0.02){
+      for(var ri=0;ri<auroraRays.length;ri++){
+        var ry=auroraRays[ri];
+        var sw=Math.sin(at*ry.sp+ry.ph)*R*0.055;
+        var rx=CX+R*ry.nx+sw;
+        var rTop=H*ry.y0+Math.cos(at*ry.sp*0.8+ry.ph)*H*0.012;
+        var rBot=rTop+H*ry.h;
+        var rw=W*ry.w;
+        var rayA=Math.min(0.16,ry.a*beatA);
+        var rgrd=actx.createLinearGradient(0,rTop,0,rBot);
+        rgrd.addColorStop(0,'rgba('+refRgb0+',0)');
+        rgrd.addColorStop(0.22,'rgba('+refRgb0+','+rayA.toFixed(3)+')');
+        rgrd.addColorStop(0.65,'rgba('+refRgb1+','+(rayA*0.55).toFixed(3)+')');
+        rgrd.addColorStop(1,'rgba('+refRgb1+',0)');
+        actx.fillStyle=rgrd;
+        var bx=rx+sw*0.45;
+        actx.globalAlpha=0.55;
+        actx.beginPath();
+        actx.moveTo(rx-rw,rTop); actx.lineTo(rx+rw,rTop);
+        actx.lineTo(bx+rw*0.85,rBot); actx.lineTo(bx-rw*0.85,rBot);
+        actx.closePath(); actx.fill();
+        actx.globalAlpha=0.65;
+        actx.beginPath();
+        actx.moveTo(rx-rw*0.44,rTop); actx.lineTo(rx+rw*0.44,rTop);
+        actx.lineTo(bx+rw*0.38,rBot); actx.lineTo(bx-rw*0.38,rBot);
+        actx.closePath(); actx.fill();
+      }
     }
-    actx.globalAlpha=1;
+    actx.globalAlpha=aVis;
     drawMeteor(t);
-    // 极夜地平线冷蓝雾霭 + 远景模糊雪山剪影（位于树后、极光下）
-    var hFog=actx.createLinearGradient(0,H*0.52,0,H*0.86);
-    hFog.addColorStop(0,'rgba(22,38,63,0)');
-    hFog.addColorStop(0.58,'rgba(44,68,100,0.22)');
-    hFog.addColorStop(1,'rgba(16,26,40,0.06)');
-    actx.fillStyle=hFog;
-    actx.fillRect(0,H*0.52,W,H*0.35);
+    actx.globalAlpha=1;
+    // 远景模糊雪山剪影（位于树后、极光下）+ 远山前方地平线冷蓝雾带（水平渐变）
     actx.drawImage(mountainLayer,0,0);
+    actx.drawImage(horizonMistLayer,0,H*0.72,W,H*0.18);
     // 雪地上的极光柔和倒影（垂直压扁径向渐变，低透明）
     var gx=CX+refSx*0.45, gy=H*(0.888-ex*0.011), grx=W*(0.40+ex*0.03), gry=H*(0.075+ex*0.022);
     actx.save();
     actx.beginPath(); actx.ellipse(CX, gy, grx, gry, 0, 0, 6.2832); actx.clip();
-    var refA=Math.min(0.24,(0.105+0.045*auroraStormMix+0.045*musicBass));
+    var refA=Math.min(0.24,(0.105+0.045*auroraStormMix+0.045*musicBass)*aVis);
     var ag=actx.createRadialGradient(gx, gy, grx*0.08, gx, gy, grx*0.92);
     ag.addColorStop(0,'rgba('+refRgb0+','+refA.toFixed(3)+')');
     ag.addColorStop(0.55,'rgba('+refRgb1+','+(refA*0.65).toFixed(3)+')');
@@ -983,12 +1196,16 @@
     ctx.restore();
   }
   function drawWindowGlow(t){
-    var g=Math.min(1,accum*0.65+boost*0.55);
+    var g=Math.min(1,accum*0.65+boost*0.55)*(1-0.25*skyState.dawnMix+0.10*skyState.duskMix);
     if(g<=0.05) return;
-    var warmEx=Math.min(1,Math.max(0,(accum-0.35)/0.65));
+    var warmEx=Math.min(1,Math.max(0,(accum-0.35)/0.65)+0.35*skyState.duskMix);
     var pulse=0.92+0.08*Math.sin(t*0.004);
-    var c0=mixRgb([214,230,251],[255,228,168],0.32+0.38*warmEx);
-    var c1=mixRgb([168,196,230],[255,196,112],0.24+0.36*warmEx);
+    var c0=mixRgb([214,230,251],[255,222,154],Math.min(1,0.32+0.38*warmEx));
+    var c1=mixRgb([168,196,230],[255,184,96],Math.min(1,0.24+0.36*warmEx));
+    if(skyState.dawnMix>0.02){
+      c0=mixRgb([214,230,251],[224,246,255],skyState.dawnMix*0.55);
+      c1=mixRgb([168,196,230],[182,226,244],skyState.dawnMix*0.55);
+    }
     ctx.save();
     for(var i=0;i<windows.length;i++){
       var w=windows[i], cxw=w.x+w.w*0.5, cyw=w.y+w.h*0.5, rad=w.w*(1.45+1.1*g);
@@ -1005,16 +1222,22 @@
     if(!lampSpec) return;
     var lx=lampSpec.x, ly=lampSpec.y, lh=lampSpec.h, w=lh*0.18, headY=ly-lh*0.90;
     var pulse=0.93+0.07*Math.sin((t||0)*0.0034);
-    var lvl=Math.min(1.25, 0.72+accum*0.25+boost*0.28)*pulse;
+    var lvl=Math.min(1.25, 0.72+accum*0.25+boost*0.28)*pulse*(1-0.22*skyState.dawnMix+0.10*skyState.duskMix);
+    var poolC0=mixRgb([255,222,165],[255,200,120],skyState.duskMix*0.65);
+    var poolC1=mixRgb([214,230,251],[255,182,128],skyState.duskMix*0.55);
+    if(skyState.dawnMix>0.02){
+      poolC0=mixRgb([255,222,165],[220,244,255],skyState.dawnMix*0.60);
+      poolC1=mixRgb([214,230,251],[184,228,244],skyState.dawnMix*0.60);
+    }
     ctx.save();
-    // 地面光池光晕（暖白混冷白椭圆形光池）
+    // 地面光池光晕（随昼夜平滑调整暖白/冷白比例）
     var prx=lh*0.58, pry=lh*0.17;
     ctx.save();
     ctx.translate(lx, ly+lh*0.02);
     ctx.scale(1, pry/prx);
     var pg=ctx.createRadialGradient(0,0,prx*0.06,0,0,prx);
-    pg.addColorStop(0,'rgba(255,222,165,'+(0.26*lvl).toFixed(3)+')');
-    pg.addColorStop(0.45,'rgba(214,230,251,'+(0.14*lvl).toFixed(3)+')');
+    pg.addColorStop(0,'rgba('+poolC0+','+(0.26*lvl).toFixed(3)+')');
+    pg.addColorStop(0.45,'rgba('+poolC1+','+(0.14*lvl).toFixed(3)+')');
     pg.addColorStop(1,'rgba(168,196,230,0)');
     ctx.fillStyle=pg;
     ctx.beginPath(); ctx.arc(0,0,prx,0,6.2832); ctx.fill();
@@ -1023,7 +1246,7 @@
     var hr=w*1.65;
     var hg=ctx.createRadialGradient(lx,headY,w*0.08,lx,headY,hr);
     hg.addColorStop(0,'rgba(255,244,214,'+(0.56*lvl).toFixed(3)+')');
-    hg.addColorStop(0.42,'rgba(214,230,251,'+(0.24*lvl).toFixed(3)+')');
+    hg.addColorStop(0.42,'rgba('+poolC1+','+(0.24*lvl).toFixed(3)+')');
     hg.addColorStop(1,'rgba(168,196,230,0)');
     ctx.fillStyle=hg;
     ctx.beginPath(); ctx.arc(lx,headY,hr,0,6.2832); ctx.fill();
@@ -1440,6 +1663,51 @@
     var dt=lastTickNow? Math.min(64,Math.max(0,now-lastTickNow)) : 16.67;
     lastTickNow=now;
     sampleAudio();
+    var needTreeRedraw=false;
+    if(skyTransActive){
+      var stK=1-Math.exp(-4.2*dt*0.001);
+      var dst=SKY_THEMES[skyMode], maxDiff=0;
+      for(var skKey in dst){
+        var dv=dst[skKey];
+        if(Array.isArray(dv)){
+          var cvArr=skyState[skKey];
+          for(var ci=0;ci<3;ci++){
+            var df=Math.abs(dv[ci]-cvArr[ci]);
+            if(df>maxDiff) maxDiff=df;
+          }
+          lerpRgbArr(cvArr, dv, stK);
+        } else {
+          var dfS=Math.abs(dv-skyState[skKey])*100;
+          if(dfS>maxDiff) maxDiff=dfS;
+          skyState[skKey]+=(dv-skyState[skKey])*stK;
+        }
+      }
+      if(maxDiff<0.35){
+        skyState=cloneTheme(dst);
+        skyTransActive=false;
+      }
+      drawSkyBackdrop();
+      buildHorizonMist();
+      applySkyThemeToDOM();
+      needTreeRedraw=true;
+    }
+    var spK=1-Math.exp(-12*dt*0.001);
+    if(Math.abs(tiltXTarget-tiltX)>0.02 || Math.abs(tiltYTarget-tiltY)>0.02 || Math.abs(tiltRotTarget-tiltRot)>0.01 || Math.abs(sceneZoomTarget-sceneZoom)>0.0005){
+      tiltX+=(tiltXTarget-tiltX)*spK;
+      tiltY+=(tiltYTarget-tiltY)*spK;
+      tiltRot+=(tiltRotTarget-tiltRot)*spK;
+      sceneZoom+=(sceneZoomTarget-sceneZoom)*spK;
+      if(Math.abs(tiltXTarget-tiltX)<=0.02) tiltX=tiltXTarget;
+      if(Math.abs(tiltYTarget-tiltY)<=0.02) tiltY=tiltYTarget;
+      if(Math.abs(tiltRotTarget-tiltRot)<=0.01) tiltRot=tiltRotTarget;
+      if(Math.abs(sceneZoomTarget-sceneZoom)<=0.0005) sceneZoom=sceneZoomTarget;
+    }
+    var trStr='translate3d('+tiltX.toFixed(2)+'px,'+tiltY.toFixed(2)+'px,0) rotate('+tiltRot.toFixed(2)+'deg) scale('+sceneZoom.toFixed(4)+')';
+    if(trStr!==lastTransformStr){
+      lastTransformStr=trStr;
+      if(sceneEl) sceneEl.style.transform=trStr;
+      if(skycv) skycv.style.transform='translate3d('+(tiltX*0.35).toFixed(2)+'px,'+(tiltY*0.35).toFixed(2)+'px,0) scale(1.08)';
+    }
     auroraPhase+=dt*musicBass*1.4;
     drawAurora(now);
     var giftAnim=false;
@@ -1451,7 +1719,7 @@
         giftAnim=true;
       }
     }
-    var treePulseP=0, treeSwayAng=0, needTreeRedraw=false;
+    var treePulseP=0, treeSwayAng=0;
     if(treePulseActive){
       var tp=Math.max(0,now-treePulseStart);
       if(tp<TREE_PULSE_DUR){
@@ -1494,6 +1762,8 @@
       drawSnowman(W/2+treeH*0.415, baseY+treeH*0.045, treeH*0.095, snowmanProg, snowmanTarget===0, now);
     }
     drawGiftEffects(now);
+    var windOsc=Math.sin(now*0.00042)*0.65+Math.sin(now*0.00019+1.1)*0.35;
+    snowSwirl=windOsc*(0.48+boost*1.65);
     var exSnow=Math.max(0,(accum-0.35)/0.65);
     ctx.fillStyle='#ffffff';
     ctx.strokeStyle='rgba(242,248,255,0.96)'; ctx.lineWidth=0.9; ctx.lineCap='round';
@@ -1507,8 +1777,12 @@
       }
       f.ph+=0.02+boost*0.06;
       if(f.crystal) f.rot+=f.vrot*(1+boost*2.2);
-      var fvx=Math.sin(f.ph)*(0.35+boost*1.8)+(Math.random()-0.5)*boost*2.4;
-      var fvy=(0.35+boost*2.8)*f.r*0.8+0.2;
+      var rx=(f.x-CX)/R, ry=(f.y-CY)/R;
+      var windVx=snowSwirl*(0.62+0.38*(f.r/3.1));
+      var vortexVx=-ry*snowSwirl*(0.42+boost*0.90)+Math.sin(f.ph*1.35)*(0.28+boost*1.05);
+      var vortexVy=rx*snowSwirl*(0.20+boost*0.48);
+      var fvx=windVx+vortexVx+(Math.random()-0.5)*boost*2.0;
+      var fvy=Math.max(0.24,(0.35+boost*2.8)*f.r*0.8+0.2+vortexVy);
       f.dx=fvx; f.dy=fvy;
       f.x+=fvx;
       f.y+=fvy;
@@ -1526,10 +1800,9 @@
       var fogRate=boost>0.4? 0.00004 : 0.00014;
       fogLevel=Math.min(1, fogLevel+dt*fogRate);
     }
-    if(fogGrad && fogLevel>0.01){
-      ctx.globalAlpha=fogLevel;
-      ctx.fillStyle=fogGrad;
-      ctx.fillRect(0,0,W,H);
+    if(fogcv && Math.abs(fogLevel-lastFogOp)>0.003){
+      lastFogOp=fogLevel;
+      fogcv.style.opacity=fogLevel.toFixed(3);
     }
     ctx.globalAlpha=1; ctx.restore();
     if(baseHalo){
@@ -1555,7 +1828,7 @@
   for(var j=0;j<50;j++) amb.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:Math.random()*2+0.6,s:Math.random()*0.7+0.3,o:Math.random()*0.4+0.15});
   for(var s=0;s<10;s++) stars.push({nx:0.05+Math.random()*0.9,ny:0.04+Math.random()*0.56,r:0.9+Math.random()*1.1,sp:0.0014+Math.random()*0.0022,ph:Math.random()*6.2832,o:0.28+Math.random()*0.32,c:s%3===0?'#ffe9b0':'#e6f0ff'});
   (function atick(t){ ax.clearRect(0,0,AW,AH);
-    var nowA=t||0;
+    var nowA=t||0, sVis=skyState.starVis;
     if(constellation.nextAt===0) constellation.nextAt=nowA+2500+Math.random()*2500;
     if(!constellation.active && nowA>=constellation.nextAt && stars.length>=4){
       var cnt=Math.random()<0.5?3:4, used={}, pts=[], cur=Math.floor(Math.random()*stars.length);
@@ -1579,7 +1852,7 @@
         constellation.nextAt=nowA+4000+Math.random()*4000;
       } else {
         var cp=cAge/constellation.dur;
-        var cal=(cp<0.15? cp/0.15 : Math.pow(Math.max(0,(1-cp)/0.85),1.2))*0.26;
+        var cal=(cp<0.15? cp/0.15 : Math.pow(Math.max(0,(1-cp)/0.85),1.2))*0.26*sVis;
         if(cal>0.006 && constellation.pts.length>=2){
           ax.save();
           ax.globalAlpha=cal;
@@ -1595,19 +1868,27 @@
         }
       }
     }
-    for(var si=0;si<stars.length;si++){ var st=stars[si], tw=0.5+0.5*Math.sin((t||0)*st.sp+st.ph), sx=st.nx*AW, sy=st.ny*AH;
-      ax.globalAlpha=st.o*(0.22+0.78*tw); ax.fillStyle=st.c;
-      ax.beginPath(); ax.arc(sx,sy,st.r*(0.85+0.25*tw),0,6.2832); ax.fill();
-      if(tw>0.6 && st.r>1.35){ ax.strokeStyle=st.c; ax.lineWidth=0.7; var cr=st.r*(1.8+tw);
-        ax.beginPath(); ax.moveTo(sx-cr,sy); ax.lineTo(sx+cr,sy); ax.moveTo(sx,sy-cr); ax.lineTo(sx,sy+cr); ax.stroke(); } }
+    if(sVis>0.02){
+      for(var si=0;si<stars.length;si++){ var st=stars[si], tw=0.5+0.5*Math.sin((t||0)*st.sp+st.ph), sx=st.nx*AW, sy=st.ny*AH;
+        ax.globalAlpha=st.o*(0.22+0.78*tw)*sVis; ax.fillStyle=st.c;
+        ax.beginPath(); ax.arc(sx,sy,st.r*(0.85+0.25*tw),0,6.2832); ax.fill();
+        if(tw>0.6 && st.r>1.35){ ax.strokeStyle=st.c; ax.lineWidth=0.7; var cr=st.r*(1.8+tw);
+          ax.beginPath(); ax.moveTo(sx-cr,sy); ax.lineTo(sx+cr,sy); ax.moveTo(sx,sy-cr); ax.lineTo(sx,sy+cr); ax.stroke(); } }
+    }
     ax.fillStyle='#fff';
     for(var k=0;k<amb.length;k++){ var p=amb[k]; ax.globalAlpha=p.o; ax.beginPath(); ax.arc(p.x,p.y,p.r,0,6.2832); ax.fill();
       p.y+=p.s; p.x+=Math.sin(p.y*0.01)*0.3; if(p.y>AH+4){p.y=-4;p.x=Math.random()*AW;} }
     ax.globalAlpha=1; requestAnimationFrame(atick); })();
-  // ---------- 摇一摇 / 点击 / 长按 ----------
+  // ---------- 摇一摇 / 点击 / 长按 / 拖动倾斜 / 双指滚轮缩放 ----------
   var globe=document.getElementById('globe'), lastShake=0;
-  var holdTimer=null, holdPtrId=null, holdX=0, holdY=0;
-  var giftPendingPtrId=null, giftPendingIdx=-1, snowmanPendingPtrId=null, treePendingPtrId=null;
+  var holdTimer=null, holdPtrId=null, holdX=0, holdY=0, holdFired=false;
+  var giftPendingPtrId=null, giftPendingIdx=-1, snowmanPendingPtrId=null, treePendingPtrId=null, skyTapPending=false;
+  var activePtrs=[], isPinching=false, wasPinchGesture=false, pinchStartDist=0, pinchStartZoom=1;
+  var dragPtrId=null, dragStartX=0, dragStartY=0, isDraggingTilt=false;
+  function findPtrIdx(id){
+    for(var i=0;i<activePtrs.length;i++){ if(activePtrs[i].id===id) return i; }
+    return -1;
+  }
   function clearHold(){
     if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; }
     holdPtrId=null;
@@ -1616,6 +1897,7 @@
     giftPendingPtrId=null; giftPendingIdx=-1;
     snowmanPendingPtrId=null;
     treePendingPtrId=null;
+    skyTapPending=false;
   }
   function triggerTreePulse(){
     treePulseStart=performance.now();
@@ -1633,12 +1915,24 @@
       if(flakes[i].landed){ flakes[i].landed=false; flakes[i].y-=4+Math.random()*10; }
     }
   }
-  function hitTestGift(clientX, clientY){
+  function clientToSceneCoords(clientX, clientY){
     var br=ball.getBoundingClientRect();
-    if(!br.width || !br.height) return -1;
+    if(!br.width || !br.height) return null;
     var px=(clientX-br.left)*(W/br.width), py=(clientY-br.top)*(H/br.height);
-    if((px-CX)*(px-CX)+(py-CY)*(py-CY)>R*R) return -1;
-    var pad=3;
+    if((px-CX)*(px-CX)+(py-CY)*(py-CY)>R*R) return null;
+    var ox=W*0.5, oy=H*0.88;
+    var dx=(px-ox-tiltX)/sceneZoom, dy=(py-oy-tiltY)/sceneZoom;
+    if(tiltRot){
+      var rad=-tiltRot*Math.PI/180, ca=Math.cos(rad), sa=Math.sin(rad);
+      var rx=dx*ca-dy*sa, ry=dx*sa+dy*ca;
+      dx=rx; dy=ry;
+    }
+    return {x:ox+dx, y:oy+dy};
+  }
+  function hitTestGift(clientX, clientY){
+    var pt=clientToSceneCoords(clientX, clientY);
+    if(!pt) return -1;
+    var px=pt.x, py=pt.y, pad=3;
     for(var gi=giftSpecs.length-1;gi>=0;gi--){
       var gs=giftSpecs[gi];
       if(px>=gs.x-gs.w*0.5-pad && px<=gs.x+gs.w*0.5+pad && py>=gs.y-gs.h-pad && py<=gs.y+pad){
@@ -1649,18 +1943,16 @@
   }
   function hitTestSnowman(clientX, clientY){
     if(snowmanProg<1 || snowmanTarget!==1) return false;
-    var br=ball.getBoundingClientRect();
-    if(!br.width || !br.height) return false;
-    var px=(clientX-br.left)*(W/br.width), py=(clientY-br.top)*(H/br.height);
-    if((px-CX)*(px-CX)+(py-CY)*(py-CY)>R*R) return false;
+    var pt=clientToSceneCoords(clientX, clientY);
+    if(!pt) return false;
+    var px=pt.x, py=pt.y;
     var baseY=H*0.875, treeH=H*0.60, sx=W/2+treeH*0.415, sy=baseY+treeH*0.045, s=treeH*0.095;
     return px>=sx-s*0.62 && px<=sx+s*0.62 && py>=sy-s*1.38 && py<=sy+s*0.18;
   }
   function hitTestTree(clientX, clientY){
-    var br=ball.getBoundingClientRect();
-    if(!br.width || !br.height) return false;
-    var px=(clientX-br.left)*(W/br.width), py=(clientY-br.top)*(H/br.height);
-    if((px-CX)*(px-CX)+(py-CY)*(py-CY)>R*R) return false;
+    var pt=clientToSceneCoords(clientX, clientY);
+    if(!pt) return false;
+    var px=pt.x, py=pt.y;
     var cx=W/2, baseY=H*0.875, treeH=H*0.60;
     var topY=baseY-treeH*1.04, botY=baseY-treeH*0.02;
     if(py<topY || py>botY) return false;
@@ -1669,14 +1961,28 @@
     return Math.abs(px-cx)<=halfW;
   }
   globe.addEventListener('pointerdown', function(e){
+    if(findPtrIdx(e.pointerId)<0){
+      activePtrs.push({id:e.pointerId, x:e.clientX, y:e.clientY});
+    }
+    if(activePtrs.length>=2){
+      clearHold(); clearPending();
+      isDraggingTilt=false; dragPtrId=null;
+      tiltXTarget=0; tiltYTarget=0; tiltRotTarget=0;
+      isPinching=true; wasPinchGesture=true;
+      pinchStartDist=Math.hypot(activePtrs[0].x-activePtrs[1].x, activePtrs[0].y-activePtrs[1].y);
+      pinchStartZoom=sceneZoomTarget;
+      return;
+    }
     clearHold(); clearPending();
     unlockMusic();
+    wasPinchGesture=false; isPinching=false; isDraggingTilt=false; holdFired=false;
+    dragPtrId=e.pointerId; dragStartX=e.clientX; dragStartY=e.clientY;
     var hitGi=hitTestGift(e.clientX, e.clientY);
     if(hitGi>=0){
       giftPendingPtrId=e.pointerId; giftPendingIdx=hitGi;
       holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
       holdTimer=setTimeout(function(){
-        holdTimer=null; holdPtrId=null;
+        holdTimer=null; holdPtrId=null; holdFired=true;
         giftPendingPtrId=null; giftPendingIdx=-1;
         var allOpen=giftStates.length>0;
         for(var i=0;i<giftStates.length;i++){
@@ -1697,23 +2003,67 @@
     if(hitTree){
       treePendingPtrId=e.pointerId;
     } else {
-      shake();
+      skyTapPending=true;
     }
     holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
     holdTimer=setTimeout(function(){
-      holdTimer=null; holdPtrId=null;
-      treePendingPtrId=null;
+      holdTimer=null; holdPtrId=null; holdFired=true;
+      treePendingPtrId=null; skyTapPending=false;
       snowmanTarget=snowmanTarget?0:1;
     }, 1000);
   });
-  globe.addEventListener('pointermove', function(e){
-    if(e.pointerId!==holdPtrId) return;
-    if(Math.hypot(e.clientX-holdX, e.clientY-holdY)>28){
-      clearHold();
-      clearPending();
+  window.addEventListener('pointermove', function(e){
+    var pIdx=findPtrIdx(e.pointerId);
+    if(pIdx>=0){
+      activePtrs[pIdx].x=e.clientX;
+      activePtrs[pIdx].y=e.clientY;
+    }
+    if(isPinching && activePtrs.length>=2){
+      var dist=Math.hypot(activePtrs[0].x-activePtrs[1].x, activePtrs[0].y-activePtrs[1].y);
+      if(pinchStartDist>8){
+        sceneZoomTarget=Math.max(0.85, Math.min(1.15, pinchStartZoom*(dist/pinchStartDist)));
+      }
+      return;
+    }
+    if(e.pointerId===dragPtrId){
+      var dx=e.clientX-dragStartX, dy=e.clientY-dragStartY;
+      if(!isDraggingTilt && Math.hypot(dx, dy)>14){
+        isDraggingTilt=true;
+        clearHold();
+        clearPending();
+      }
+      if(isDraggingTilt){
+        var sc=Math.max(0.75, W/400);
+        tiltXTarget=Math.max(-14, Math.min(14, dx*0.12))*sc;
+        tiltYTarget=Math.max(-10, Math.min(10, dy*0.09))*sc;
+        tiltRotTarget=Math.max(-3.6, Math.min(3.6, dx*0.032));
+      }
     }
   });
-  window.addEventListener('pointerup', function(e){
+  function handlePtrEnd(e, isCancel){
+    var pIdx=findPtrIdx(e.pointerId);
+    if(pIdx>=0) activePtrs.splice(pIdx, 1);
+    if(activePtrs.length<2) isPinching=false;
+    if(e.pointerId===dragPtrId){
+      dragPtrId=null;
+      if(isDraggingTilt){
+        isDraggingTilt=false;
+        tiltXTarget=0; tiltYTarget=0; tiltRotTarget=0;
+        clearHold(); clearPending();
+        return;
+      }
+    }
+    if(wasPinchGesture){
+      if(activePtrs.length===0) wasPinchGesture=false;
+      clearHold(); clearPending();
+      return;
+    }
+    if(isCancel){
+      if(e.pointerId===holdPtrId || e.pointerId===giftPendingPtrId || e.pointerId===snowmanPendingPtrId || e.pointerId===treePendingPtrId){
+        clearHold(); clearPending();
+      }
+      return;
+    }
     if(giftPendingPtrId!==null && e.pointerId===giftPendingPtrId){
       var gi=giftPendingIdx;
       clearHold(); clearPending();
@@ -1735,19 +2085,34 @@
     }
     if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
       triggerTreePulse();
-      clearPending();
+      clearHold(); clearPending();
+      return;
     }
-    if(holdTimer && e.pointerId===holdPtrId) clearHold();
-  });
-  window.addEventListener('pointercancel', function(e){
-    if(e.pointerId===holdPtrId || e.pointerId===giftPendingPtrId || e.pointerId===snowmanPendingPtrId || e.pointerId===treePendingPtrId){
+    if(skyTapPending && !holdFired){
+      shake();
+    }
+    if(e.pointerId===holdPtrId || skyTapPending){
       clearHold(); clearPending();
     }
-  });
+  }
+  window.addEventListener('pointerup', function(e){ handlePtrEnd(e, false); });
+  window.addEventListener('pointercancel', function(e){ handlePtrEnd(e, true); });
+  globe.addEventListener('wheel', function(e){
+    e.preventDefault();
+    var d=Math.max(-120, Math.min(120, e.deltaY));
+    sceneZoomTarget=Math.max(0.85, Math.min(1.15, sceneZoomTarget-d*0.0008));
+  }, {passive:false});
   globe.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   window.addEventListener('devicemotion', function(e){
     var a=e.accelerationIncludingGravity; if(!a||a.x==null) return;
     if(Math.abs(a.x)+Math.abs(a.y)+Math.abs(a.z)>26) shake();
+  });
+  // ---------- 昼夜切换 ----------
+  document.getElementById('sky-btn').addEventListener('click', function(e){
+    e.stopPropagation();
+    skyMode=(skyMode+1)%3;
+    skyTransActive=true;
+    this.textContent='🌗 '+SKY_NAMES[skyMode];
   });
   // ---------- 灯色切换 ----------
   document.getElementById('lamp-btn').addEventListener('click', function(e){
