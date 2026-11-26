@@ -127,6 +127,14 @@
   #bgm-hint { right:18px; }
   #lamp-btn { left:18px; }
   #sky-btn { left:18px; bottom:64px; }
+
+  @keyframes xfxPlateShake{
+    0%,100%{ transform:translate(0,0) rotate(0); }
+    15%{ transform:translate(-3px,1px) rotate(-2deg); }
+    35%{ transform:translate(3px,-1px) rotate(2deg); }
+    55%{ transform:translate(-2px,0) rotate(-1deg); }
+    75%{ transform:translate(2px,1px) rotate(1deg); }
+  }
 </style>
 </head>
 <body>
@@ -336,6 +344,139 @@ function buildSnowmanFootprints(a){
   }
   return { cv:c, ox:pad, oy:pad*0.5 };
 }
+
+// ===== v15 公共（礼物飘雪/视角/光斑/连线）=====
+var xfx = { giftSnow:[], nextGift:[], spot:null, nextSpot:0, link:null, nextLink:0, view:0, viewFrom:0, viewStart:0, plateOnce:0 };
+function xfxEase(t){ return t<0?0:t>1?1:(t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2); }
+function xfxGiftTop(i){
+  var g = giftSpecs[i]; if(!g) return null;
+  var bY=H*0.875, tH=H*0.60;
+  return { x:g.x, y:g.y-g.h, w:g.w };
+}
+// 1) 礼物盒飘雪
+function xfxGiftSnow(now){
+  var i, a=xfx.giftSnow, n=giftSpecs.length;
+  if(!xfx.nextGift.length){ for(i=0;i<n;i++) xfx.nextGift[i]=now+2000+Math.random()*8000; }
+  for(i=0;i<n;i++){
+    if(now>=xfx.nextGift[i]){
+      xfx.nextGift[i]=now+6000+Math.random()*4000;
+      if(a.length<10){
+        var g=xfxGiftTop(i); if(g){
+          a.push({ x:g.x+(Math.random()-0.5)*g.w*0.8, y:g.y-R*0.10, ty:g.y, vy:R*0.00055*(0.7+Math.random()*0.6),
+                   ph:Math.random()*6.28, r:Math.max(1,R*0.0055),
+                   col: Math.random()<0.55? '255,255,255' : (Math.random()<0.5?'255,150,150':'255,215,110') });
+        }
+      }
+    }
+  }
+  if(!a.length) return;
+  ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
+  for(i=a.length-1;i>=0;i--){
+    var p=a[i];
+    p.y+=p.vy*16;
+    var sx=p.x+Math.sin(now*0.003+p.ph)*R*0.007;
+    if(p.y>=p.ty){ a.splice(i,1); continue; }
+    ctx.fillStyle='rgba('+p.col+',0.85)';
+    ctx.beginPath(); ctx.arc(sx,p.y,p.r,0,6.2832); ctx.fill();
+  }
+  ctx.restore();
+}
+// 2) 双击底座切换视角
+function xfxViewCanvases(){
+  var out=[], c;
+  if(typeof skycv!=='undefined'&&skycv) out.push(skycv);
+  if(typeof mountainLayer!=='undefined'&&mountainLayer) out.push(mountainLayer);
+  if(typeof tctx!=='undefined'&&tctx&&tctx.canvas) out.push(tctx.canvas);
+  if(typeof ctx!=='undefined'&&ctx&&ctx.canvas) out.push(ctx.canvas);
+  if(typeof fogcv!=='undefined'&&fogcv) out.push(fogcv);
+  if(typeof actx!=='undefined'&&actx&&actx.canvas) out.push(actx.canvas);
+  return out;
+}
+function xfxViewUpdate(now){
+  if(!xfx.viewStart) return;
+  var t=xfxEase((now-xfx.viewStart)/600);
+  var v=xfx.viewFrom+(xfx.view-xfx.viewFrom)*t;
+  var cs=xfxViewCanvases();
+  var tr='translateY('+(v*R*0.05).toFixed(1)+'px) scale('+(1+v*0.04).toFixed(4)+','+(1-v*0.06).toFixed(4)+')';
+  for(var i=0;i<cs.length;i++){ cs[i].style.transformOrigin='50% 50%'; cs[i].style.transform=tr; }
+  if(t>=1) xfx.viewStart=0;
+}
+function xfxInitViewToggle(){
+  if(typeof plateEl==='undefined'||!plateEl) return;
+  var base=plateEl.parentNode||plateEl;
+  if(!base||base._xfxView) return;
+  base._xfxView=true;
+  var lastTap=0, downT=0;
+  base.addEventListener('pointerdown',function(){ downT=Date.now(); },true);
+  base.addEventListener('click',function(e){
+    var now=Date.now();
+    if(now-downT>400) return;                 // 长按结束不算
+    if(now-lastTap<=320 && now-lastTap>40){
+      lastTap=0;
+      // 取消单击换字的延迟定时器（双击不应换字）
+      if(typeof plateClickTimer!=='undefined' && plateClickTimer){ clearTimeout(plateClickTimer); plateClickTimer=null; }
+      xfx.viewFrom=xfx.view; xfx.view=xfx.view?0:1; xfx.viewStart=performance.now();
+      e.stopImmediatePropagation(); e.preventDefault();
+    } else { lastTap=now; }
+  },true);
+}
+// 3) 雪地呼吸光斑
+function xfxSnowSpot(now){
+  var bY=H*0.875;
+  if(!xfx.nextSpot) xfx.nextSpot=now+3000;
+  if(!xfx.spot && now>=xfx.nextSpot){
+    xfx.spot={ t0:now, x:CX+(Math.random()-0.5)*R*1.3, y:bY+R*0.02+(Math.random()-0.5)*R*0.06,
+               r0:R*0.05, r1:R*(0.13+Math.random()*0.07) };
+    xfx.nextSpot=now+3000+Math.random()*3000;
+  }
+  if(!xfx.spot) return;
+  var p=(now-xfx.spot.t0)/2000;
+  if(p>=1){ xfx.spot=null; return; }
+  var sp=xfx.spot, r=sp.r0+(sp.r1-sp.r0)*p;
+  var al=(p<0.25? p/0.25 : 1-(p-0.25)/0.75)*0.13;
+  ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
+  var g=ctx.createRadialGradient(sp.x,sp.y,0,sp.x,sp.y,r);
+  g.addColorStop(0,'rgba(255,244,214,'+al.toFixed(3)+')');
+  g.addColorStop(1,'rgba(255,244,214,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(sp.x,sp.y,r,r*0.42,0,0,6.2832); ctx.fill();
+  ctx.restore();
+}
+// 4) 树顶星光连线
+function xfxStarLinks(now){
+  var bY=H*0.875, tH=H*0.60, topX=CX, topY=bY-tH*0.98;
+  if(!xfx.nextLink) xfx.nextLink=now+8000;
+  if(!xfx.link && now>=xfx.nextLink){
+    var pts=[{x:topX,y:topY}], n=3+((Math.random()*2)|0);
+    for(var i=0;i<n;i++){
+      var a=Math.random()*Math.PI*2, rr=R*(0.35+Math.random()*0.5);
+      pts.push({ x:topX+Math.cos(a)*rr*0.85, y:topY+Math.sin(a)*rr*0.6-R*0.05 });
+    }
+    xfx.link={ t0:now, pts:pts };
+    xfx.nextLink=now+8000+Math.random()*6000;
+  }
+  if(!xfx.link) return;
+  var p=(now-xfx.link.t0)/1500;
+  if(p>=1){ xfx.link=null; return; }
+  var al=(p<0.2? p/0.2 : 1-(p-0.2)/0.8)*0.55;
+  var ps=xfx.link.pts;
+  ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
+  ctx.strokeStyle='rgba(255,226,150,'+al.toFixed(3)+')';
+  ctx.lineWidth=Math.max(0.8,R*0.003);
+  for(var j=0;j<ps.length-1;j++){
+    ctx.beginPath(); ctx.moveTo(ps[j].x,ps[j].y); ctx.lineTo(ps[j+1].x,ps[j+1].y); ctx.stroke();
+  }
+  ctx.fillStyle='rgba(255,240,190,'+Math.min(1,al*1.6).toFixed(3)+')';
+  for(var k=0;k<ps.length;k++){ ctx.beginPath(); ctx.arc(ps[k].x,ps[k].y,Math.max(1,R*0.006),0,6.2832); ctx.fill(); }
+  ctx.restore();
+}
+// 6) 摇球时铭牌一次性抖动
+function xfxPlateShakeOnce(now){
+  if(typeof plateEl==='undefined'||!plateEl) return;
+  var el=plateEl;
+  el.style.animation='none'; void el.offsetWidth;
+  el.style.animation='xfxPlateShake .5s ease-out 1';
+}
+
 function drawSnowmanFootprints(){
   if(snowmanProg<=0) return;
   var a=snowmanAnchor(), key=(a.x|0)+','+(a.footY|0)+','+(a.s|0);
@@ -1792,9 +1933,15 @@ function drawSnowmanFootprints(){
     ctx.ellipse(-r2*0.32,y2-r2*0.14,eyeR,eyeRy,0,0,6.2832);
     ctx.ellipse(r2*0.32,y2-r2*0.14,eyeR,eyeRy,0,0,6.2832);
     ctx.fill();
-    // 胡萝卜鼻子
+    // 胡萝卜鼻子（v15：轻微上下摆动）
+    ctx.save();
+    var noseSway=Math.sin((t||0)*0.0022)*r2*0.05;
+    ctx.translate(0, y2);
+    ctx.rotate(noseSway/r2*0.12);
+    ctx.translate(0, -y2);
     ctx.fillStyle='#f08c28';
     ctx.beginPath(); ctx.moveTo(0,y2-r2*0.04); ctx.lineTo(s*0.20,y2+r2*0.06); ctx.lineTo(0,y2+r2*0.16); ctx.closePath(); ctx.fill();
+    ctx.restore();
     // 小礼帽（雪人渐显完成瞬间从上方落下并轻微弹跳一次到位）
     if(hatProg>0){
       var u=hatProg, hatDy=0, hatRot=0;
@@ -2453,6 +2600,11 @@ function drawSnowmanFootprints(){
     drawSnowmanFootprints();
     drawSnowmanBubble(now);
     drawRainDrops(now);
+    // v15 特效
+    xfxViewUpdate(now);
+    xfxGiftSnow(now);
+    xfxSnowSpot(now);
+    xfxStarLinks(now);
     requestAnimationFrame(tick);
   }
   var accumChanged=false;
@@ -2545,6 +2697,7 @@ function drawSnowmanFootprints(){
   function shake(){
     var now=Date.now(); if(now-lastShake<500) return; lastShake=now;
     boost=1; accum=Math.min(1,accum+0.22); accumChanged=true;
+    if(typeof xfxPlateShakeOnce==='function') xfxPlateShakeOnce(performance.now());
     fogLevel=Math.min(fogLevel,0.16);
     updateGroundSnow();
     shakeStart=performance.now(); shakeActive=true;
@@ -2765,6 +2918,7 @@ function drawSnowmanFootprints(){
   window.addEventListener('pointercancel', function(e){ handlePtrEnd(e, true); });
   // ---------- 底座铭牌切换 ----------
   var plateEl=document.getElementById('plate');
+  if(typeof xfxInitViewToggle==='function') xfxInitViewToggle();
 
   // v14 底座长按震动（aws-quick/smart）
   var plateShake={holding:false,active:false,t0:0,timer:0,suppress:false};
@@ -2793,21 +2947,26 @@ function drawSnowmanFootprints(){
   initPlateLongPress();
 
   var PLATE_TEXTS=['MERRY CHRISTMAS','HAPPY NEW YEAR','"MERRY CHRISTMAS" from XS'];
-  var plateIdx=0, plateFadeTimer=null;
+  var plateIdx=0, plateFadeTimer=null, plateClickTimer=null;
   if(plateEl){
     plateEl.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
     plateEl.addEventListener('pointerup', function(e){ e.stopPropagation(); });
     plateEl.addEventListener('click', function(e){
       e.stopPropagation();
-      plateIdx=(plateIdx+1)%PLATE_TEXTS.length;
-      if(plateFadeTimer) clearTimeout(plateFadeTimer);
-      plateEl.style.opacity='0';
-      plateFadeTimer=setTimeout(function(){
-        plateFadeTimer=null;
-        plateEl.textContent=PLATE_TEXTS[plateIdx];
-        plateEl.style.letterSpacing=(plateIdx===2)?'.05em':'.14em';
-        plateEl.style.opacity='1';
-      }, 170);
+      // v15：双击 = 切换视角（由 xfxInitViewToggle 处理），此时取消换字
+      if(plateClickTimer){ clearTimeout(plateClickTimer); plateClickTimer=null; return; }
+      plateClickTimer=setTimeout(function(){
+        plateClickTimer=null;
+        plateIdx=(plateIdx+1)%PLATE_TEXTS.length;
+        if(plateFadeTimer) clearTimeout(plateFadeTimer);
+        plateEl.style.opacity='0';
+        plateFadeTimer=setTimeout(function(){
+          plateFadeTimer=null;
+          plateEl.textContent=PLATE_TEXTS[plateIdx];
+          plateEl.style.letterSpacing=(plateIdx===2)?'.05em':'.14em';
+          plateEl.style.opacity='1';
+        }, 170);
+      }, 320);
     });
   }
   globe.addEventListener('wheel', function(e){
