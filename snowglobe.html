@@ -23,6 +23,7 @@
   .wrap { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; }
   .globe { position:relative; width:min(78vw,400px); aspect-ratio:1/1.16; -webkit-user-select:none; -webkit-touch-callout:none; user-select:none; touch-action:none; }
   .globe.shaking { animation: shake .7s cubic-bezier(.36,.07,.19,.97); }
+  .globe.shaking-mild { animation: shakeMild .36s cubic-bezier(.36,.07,.19,.97); }
   @keyframes shake {
     0%,100% { transform:rotate(0) translateX(0); }
     15% { transform:rotate(-4deg) translateX(-10px); }
@@ -31,6 +32,13 @@
     60% { transform:rotate(2.4deg) translateX(6px); }
     75% { transform:rotate(-1.6deg) translateX(-4px); }
     90% { transform:rotate(1deg) translateX(2px); }
+  }
+  @keyframes shakeMild {
+    0%,100% { transform:rotate(0) translate(0,0); }
+    20% { transform:rotate(-1.2deg) translate(-3px,-1px); }
+    45% { transform:rotate(1.1deg) translate(3px,1px); }
+    70% { transform:rotate(-0.7deg) translate(-2px,0); }
+    88% { transform:rotate(0.4deg) translate(1px,0); }
   }
   .ball {
     position:absolute; top:0; left:50%; transform:translateX(-50%);
@@ -100,8 +108,10 @@
   }
   .plate {
     position:absolute; top:38%; left:50%; transform:translateX(-50%);
-    color:#ffd98a; font-size:clamp(9px,2.4vw,13px); letter-spacing:.14em; white-space:nowrap;
+    color:#ffd98a; font-size:clamp(8.5px,2.3vw,13px); letter-spacing:.14em; white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.7); font-weight:600;
+    padding:4px 10px; border-radius:8px; cursor:pointer;
+    transition:opacity .20s ease, letter-spacing .20s ease;
   }
   .hint {
     position:relative; z-index:2; margin-top:24px; color:#9fb4d8; font-size:14px; letter-spacing:.06em;
@@ -154,7 +164,7 @@
       <div class="glare2"></div>
     </div>
     <div class="base-halo" id="base-halo"></div>
-    <div class="base"><div class="plate">MERRY CHRISTMAS</div></div>
+    <div class="base"><div class="plate" id="plate">MERRY CHRISTMAS</div></div>
   </div>
   <div class="hint">🫧 <b>摇一摇 / 点一点球</b> 下大雪·积雪变厚</div>
 </div>
@@ -169,6 +179,7 @@
   var skycv=document.getElementById('skycv'), sctx=skycv.getContext('2d');
   var fogcv=document.getElementById('fogcv'), fctx=fogcv.getContext('2d');
   var glasscv=document.getElementById('glasscv'), gctx=glasscv.getContext('2d');
+  var frostLayer=document.createElement('canvas'), frctx=frostLayer.getContext('2d'), lastFrostOp=-1;
   var skyBlurLayer=document.createElement('canvas'); skyBlurLayer.width=112; skyBlurLayer.height=112;
   var sbctx=skyBlurLayer.getContext('2d');
   var horizonMistLayer=document.createElement('canvas'); horizonMistLayer.width=160; horizonMistLayer.height=48;
@@ -194,9 +205,10 @@
   var audioCtx=null, analyser=null, freqData=null, audioInited=false;
   var musicBass=0, musicEnergy=0, auroraPhase=0, lastTickNow=0;
   var meteor={active:false, start:0, dur:850, nextAt:0, x0:0, y0:0, dx:0, dy:0};
-  var footprintAlpha=0, footprintReveal=0, footprintActive=false, prevAccum=accum;
-  var squirrel={offset:0, target:0, dir:1, nextAt:0};
+  var footprintAlpha=0, footprintReveal=0, footprintActive=false, footprintCover=0, prevAccum=accum;
+  var squirrel={offset:0, target:0, dir:1, nextAt:0, treePhase:0, treeStart:0, nextTreeAt:0, stayDur:2600, fromX:0, fromY:0};
   var giftStates=[], giftParticles=[], giftLabels=[], MAX_GIFT_PARTICLES=24;
+  var fwParticles=[], fwRings=[], MAX_FW_PARTICLES=20;
   var auroraStormMix=0, snowmanBlinkAt=0, snowmanBlinkUntil=0;
   var snowmanOutfits=[
     {hat:'#222630', band:'#c92a2a', scarf:'#c92a2a', tail:'#b02020'},
@@ -326,10 +338,86 @@
     if(gfStops[2]) gfStops[2].setAttribute('stop-color', rgbStr(skyState.gf2));
     document.body.style.background='radial-gradient(ellipse at 50% 18%, '+rgbStr(skyState.bodyTop)+' 0%, '+rgbStr(skyState.bodyMid)+' 48%, '+rgbStr(skyState.bodyBot)+' 100%)';
   }
+  function getFrostOpacity(){
+    var dayDim=1-0.22*skyState.duskMix-0.30*skyState.dawnMix;
+    return Math.max(0.12, Math.min(1, (0.28+0.72*fogLevel)*dayDim));
+  }
+  function drawFrostBranch(c, x, y, ang, len, depth, lw, frnd){
+    if(depth<=0 || len<2.5) return;
+    var ex=x+Math.cos(ang)*len, ey=y+Math.sin(ang)*len;
+    var mx=(x+ex)*0.5+Math.cos(ang+1.57)*len*0.06*(frnd()-0.5);
+    var my=(y+ey)*0.5+Math.sin(ang+1.57)*len*0.06*(frnd()-0.5);
+    c.beginPath(); c.moveTo(x,y); c.quadraticCurveTo(mx,my,ex,ey);
+    c.lineWidth=lw*2.1; c.strokeStyle='rgba(218,236,255,0.09)'; c.stroke();
+    c.lineWidth=lw; c.strokeStyle='rgba(242,249,255,0.28)'; c.stroke();
+    var twigs=depth>=3? 4 : 3;
+    for(var i=1;i<=twigs;i++){
+      var u=0.26+0.64*(i/twigs);
+      var bx=x+(ex-x)*u, by=y+(ey-y)*u;
+      var sLen=len*(0.46-u*0.16)*(0.82+frnd()*0.34);
+      var spread=0.78+frnd()*0.26;
+      drawFrostBranch(c, bx, by, ang-spread, sLen, depth-1, lw*0.72, frnd);
+      drawFrostBranch(c, bx, by, ang+spread, sLen, depth-1, lw*0.72, frnd);
+    }
+    if(depth>=2){
+      drawFrostBranch(c, ex, ey, ang+(frnd()-0.5)*0.22, len*0.52, depth-1, lw*0.74, frnd);
+    }
+  }
+  function buildFrostLayer(){
+    frctx.clearRect(0,0,W,H);
+    frctx.save();
+    frctx.beginPath(); frctx.arc(CX,CY,R,0,6.2832); frctx.clip();
+    var fseed=409;
+    function frnd(){ fseed=(fseed*9301+49297)%233280; return fseed/233280; }
+    var sc=Math.max(0.6, W/400);
+    // 左下与右上边缘淡淡的雾霜基底晕染
+    var patches=[
+      {a:Math.PI*0.74, rr:0.98, rad:R*0.36, op:0.11},
+      {a:-Math.PI*0.24, rr:0.98, rad:R*0.34, op:0.10},
+      {a:Math.PI*0.86, rr:0.98, rad:R*0.24, op:0.07},
+      {a:-Math.PI*0.12, rr:0.98, rad:R*0.22, op:0.07}
+    ];
+    for(var pi=0;pi<patches.length;pi++){
+      var pt=patches[pi], px=CX+Math.cos(pt.a)*R*pt.rr, py=CY+Math.sin(pt.a)*R*pt.rr;
+      var fg=frctx.createRadialGradient(px,py,pt.rad*0.05,px,py,pt.rad);
+      fg.addColorStop(0,'rgba(226,242,255,'+pt.op+')');
+      fg.addColorStop(0.55,'rgba(210,232,252,'+(pt.op*0.42).toFixed(3)+')');
+      fg.addColorStop(1,'rgba(210,232,252,0)');
+      frctx.fillStyle=fg;
+      frctx.beginPath(); frctx.arc(px,py,pt.rad,0,6.2832); frctx.fill();
+    }
+    frctx.lineCap='round';
+    // 霜花簇：重点分布于左下 (0.56π~0.94π) 与右上 (-0.42π~-0.06π)
+    var clusters=[
+      {a:Math.PI*0.64, len:0.145, dep:3}, {a:Math.PI*0.71, len:0.185, dep:3},
+      {a:Math.PI*0.78, len:0.165, dep:3}, {a:Math.PI*0.85, len:0.135, dep:2},
+      {a:Math.PI*0.91, len:0.105, dep:2},
+      {a:-Math.PI*0.36, len:0.130, dep:2}, {a:-Math.PI*0.28, len:0.180, dep:3},
+      {a:-Math.PI*0.21, len:0.160, dep:3}, {a:-Math.PI*0.14, len:0.125, dep:2},
+      {a:-Math.PI*0.08, len:0.095, dep:2},
+      {a:Math.PI*1.12, len:0.085, dep:2}, {a:Math.PI*0.36, len:0.085, dep:2}
+    ];
+    for(var ci=0;ci<clusters.length;ci++){
+      var cl=clusters[ci];
+      var sx=CX+Math.cos(cl.a)*R*0.995, sy=CY+Math.sin(cl.a)*R*0.995;
+      var inAng=cl.a+Math.PI+(frnd()-0.5)*0.34;
+      drawFrostBranch(frctx, sx, sy, inAng, R*cl.len*(0.92+frnd()*0.16), cl.dep, 0.95*sc, frnd);
+    }
+    frctx.restore();
+  }
   function drawGlassLayer(){
     gctx.clearRect(0,0,W,H);
     gctx.save();
     gctx.beginPath(); gctx.arc(CX,CY,R,0,6.2832); gctx.clip();
+    // 静态离屏霜花层叠加（透明度随 fogLevel 与昼夜微调）
+    if(frostLayer.width>0){
+      var fop=getFrostOpacity();
+      lastFrostOp=fop;
+      gctx.save();
+      gctx.globalAlpha=fop;
+      gctx.drawImage(frostLayer,0,0);
+      gctx.restore();
+    }
     // 内壁淡蓝折射高光环（Fresnel 菲涅尔内壁折射感）
     var ir=gctx.createRadialGradient(CX,CY,R*0.76,CX,CY,R);
     ir.addColorStop(0,'rgba(176,214,250,0)');
@@ -527,6 +615,7 @@
     skycv.width=W; skycv.height=H;
     fogcv.width=W; fogcv.height=H;
     glasscv.width=W; glasscv.height=H;
+    frostLayer.width=W; frostLayer.height=H;
     acv.width=W; acv.height=H;
     auroraDofLayer.width=Math.max(64, Math.round(W*0.28));
     auroraDofLayer.height=Math.max(64, Math.round(H*0.28));
@@ -551,6 +640,7 @@
     lastFogOp=-1;
     drawSkyBackdrop();
     buildHorizonMist();
+    buildFrostLayer();
     drawGlassLayer();
     buildDistantMountains();
     buildSnowSpeckles();
@@ -1197,14 +1287,20 @@
     var aVis=skyState.auroraVis;
     var at=t+auroraPhase, beatA=(1+musicBass*0.95)*(1+auroraStormMix*0.38)*aVis;
     var refRgb0='72,235,175', refRgb1='85,215,235', refSx=0;
+    var scTilt=Math.max(0.75, W/400);
+    var normTX=tiltX/(14*scTilt), normTY=tiltY/(10*scTilt);
     var adW=auroraDofLayer.width, adH=auroraDofLayer.height;
     adctx.clearRect(0,0,adW,adH);
     adctx.save();
     adctx.scale(adW/W, adH/H);
+    // 极光带/光柱随拖动方向轻微视差偏移与拉伸（松手随 tiltX/tiltY 平滑回弹）
+    adctx.translate(CX-tiltX*0.52, CY-tiltY*0.38);
+    adctx.transform(1+Math.abs(normTX)*0.075, normTY*0.028, normTX*0.065, 1+normTY*0.045, 0, 0);
+    adctx.translate(-CX, -CY);
     for(var i=0;i<auroraBands.length;i++){
       var b=auroraBands[i];
-      var sx=Math.sin(at*b.sp+b.ph)*W*b.amp;
-      var sy=Math.cos(at*b.sp*0.8+b.ph)*H*0.02;
+      var sx=Math.sin(at*b.sp+b.ph)*W*b.amp-tiltX*(0.12+i*0.09);
+      var sy=Math.cos(at*b.sp*0.8+b.ph)*H*0.02-tiltY*(0.06+i*0.05);
       var topY=H*b.y0+sy, botY=topY+H*b.h;
       var rgb2=mixRgb(b.g2,b.p2,auroraStormMix), rgb3=mixRgb(b.g3,b.p3,auroraStormMix);
       if(i===0){ refRgb0=rgb2; refSx=sx; }
@@ -1276,7 +1372,7 @@
     actx.drawImage(mountainLayer,0,0);
     actx.drawImage(horizonMistLayer,0,H*0.72,W,H*0.18);
     // 雪地上的极光柔和倒影（垂直压扁径向渐变，低透明）
-    var gx=CX+refSx*0.45, gy=H*(0.888-ex*0.011), grx=W*(0.40+ex*0.03), gry=H*(0.075+ex*0.022);
+    var gx=CX+refSx*0.45-tiltX*0.24, gy=H*(0.888-ex*0.011), grx=W*(0.40+ex*0.03), gry=H*(0.075+ex*0.022);
     actx.save();
     actx.beginPath(); actx.ellipse(CX, gy, grx, gry, 0, 0, 6.2832); actx.clip();
     var refA=Math.min(0.24,(0.105+0.045*auroraStormMix+0.045*musicBass)*aVis);
@@ -1546,15 +1642,27 @@
     ctx.restore();
   }
   function drawFootprints(){
-    if(accum>prevAccum+0.004) footprintActive=true;
+    var accumDelta=accum-prevAccum;
+    if(accumDelta>0.004) footprintActive=true;
     prevAccum=accum;
     if(footprintActive && accum>0.38){
       var accumBoost=Math.min(1, Math.max(0, (accum-0.35)/0.65));
       footprintAlpha=Math.min(1, footprintAlpha+0.024);
       footprintReveal=Math.min(1, footprintReveal+0.0085+0.0075*accumBoost);
+      // 雪暴（accum上升或高风雪）时新雪逐步覆盖已有脚印，雪停后缓慢重现
+      var stormActive=(accumDelta>0.001 || boost>0.24) && footprintReveal>0.28;
+      if(stormActive){
+        var coverTarget=Math.min(0.94, 0.36+0.44*accumBoost+0.32*boost);
+        if(footprintCover<coverTarget){
+          footprintCover=Math.min(coverTarget, footprintCover+0.011+0.014*Math.max(boost, accumBoost));
+        }
+      } else if(boost<0.16 && footprintCover>0){
+        footprintCover=Math.max(0, footprintCover-0.0042);
+      }
     } else if(footprintAlpha>0){
       footprintAlpha=Math.max(0, footprintAlpha-0.0030);
-      if(footprintAlpha<=0){ footprintReveal=0; footprintActive=false; }
+      if(footprintCover>0) footprintCover=Math.max(0, footprintCover-0.0042);
+      if(footprintAlpha<=0){ footprintReveal=0; footprintCover=0; footprintActive=false; }
     }
     if(footprintAlpha<=0.005 || footprintReveal<=0.005) return;
     var cx=W/2, baseY=H*0.875, treeH=H*0.60, steps=8;
@@ -1562,6 +1670,8 @@
     var ex=cx+treeH*0.505, ey=baseY+treeH*0.017;
     var arcAmp=treeH*0.013;
     var baseRx=Math.max(1.8,treeH*0.0125), baseRy=Math.max(1.05,treeH*0.0070);
+    var snowTopCol=rgbStr(skyState.gf0);
+    var snowMidCol=rgbStr(skyState.gf1);
     ctx.save();
     for(var i=0;i<steps;i++){
       var stepFade=Math.max(0,Math.min(1,(footprintReveal-i*0.105)/0.18))*footprintAlpha;
@@ -1579,55 +1689,120 @@
       var footAng=pathAng+lr*0.135+Math.sin(i*2.37+0.5)*0.045;
       var rx=baseRx*persp, ry=baseRy*persp;
       var alphaBase=stepFade*depthFade;
+      // 每步略微错开新雪覆盖进度，呈现风吹雪斑驳填平感
+      var stepCov=Math.max(0, Math.min(1, footprintCover*(0.88+0.24*((i*37%10)/10))));
+      var pitVis=1-stepCov*0.86;
+      var ridgeVis=1-stepCov*0.74;
       ctx.save();
       ctx.translate(px,py);
       ctx.rotate(footAng);
       // 1) 边缘积雪隆起淡蓝阴影（外沿受压隆起背光侧）
-      ctx.globalAlpha=0.36*alphaBase;
+      ctx.globalAlpha=0.36*alphaBase*ridgeVis;
       ctx.fillStyle='#7c99ba';
       ctx.beginPath(); ctx.ellipse(rx*0.08,ry*0.28,rx*1.20,ry*1.26,0,0,6.2832); ctx.fill();
       // 2) 边缘积雪隆起白色高光（踩踏挤出的雪埂亮边）
-      ctx.globalAlpha=0.62*alphaBase;
+      ctx.globalAlpha=0.62*alphaBase*ridgeVis;
       ctx.strokeStyle='#f2f7ff';
       ctx.lineWidth=Math.max(0.85,ry*0.42);
       ctx.beginPath(); ctx.ellipse(0,-ry*0.06,rx*1.06,ry*1.10,0,0,6.2832); ctx.stroke();
-      // 3) 椭圆压扁凹陷脚印（脚掌 + 脚跟，双层偏移模拟凹坑深浅）
-      ctx.globalAlpha=0.66*alphaBase;
+      // 3) 椭圆压扁凹陷脚印（脚掌 + 脚跟，随新雪覆盖逐渐变浅）
+      ctx.globalAlpha=0.66*alphaBase*pitVis;
       ctx.fillStyle='#435c7c';
       ctx.beginPath(); ctx.ellipse(rx*0.18,0,rx*0.72,ry*0.92,0,0,6.2832); ctx.fill();
       ctx.beginPath(); ctx.ellipse(-rx*0.60,0,rx*0.40,ry*0.74,0,0,6.2832); ctx.fill();
-      ctx.globalAlpha=0.42*alphaBase;
+      ctx.globalAlpha=0.42*alphaBase*pitVis;
       ctx.fillStyle='#6987ab';
       ctx.beginPath(); ctx.ellipse(rx*0.18,ry*0.16,rx*0.58,ry*0.68,0,0,6.2832); ctx.fill();
       ctx.beginPath(); ctx.ellipse(-rx*0.60,ry*0.14,rx*0.30,ry*0.52,0,0,6.2832); ctx.fill();
       // 4) 坑沿下方受光微高光唇边
-      ctx.globalAlpha=0.45*alphaBase;
+      ctx.globalAlpha=0.45*alphaBase*ridgeVis;
       ctx.strokeStyle='#e8f2ff';
       ctx.lineWidth=Math.max(0.6,ry*0.24);
       ctx.beginPath(); ctx.ellipse(rx*0.16,ry*0.12,rx*0.72,ry*0.88,0,0.25,2.89); ctx.stroke();
+      // 5) 新雪填埋层：雪暴时白色/主题雪色逐渐覆盖脚印坑与雪埂，雪停后渐退露出脚印
+      if(stepCov>0.02){
+        ctx.globalAlpha=0.76*stepCov*alphaBase;
+        ctx.fillStyle=snowTopCol;
+        ctx.beginPath(); ctx.ellipse(0,0,rx*(1.08+0.26*stepCov),ry*(1.08+0.26*stepCov),0,0,6.2832); ctx.fill();
+        ctx.globalAlpha=0.48*stepCov*alphaBase;
+        ctx.fillStyle=snowMidCol;
+        ctx.beginPath(); ctx.ellipse(rx*0.12,ry*0.06,rx*0.82,ry*0.82,0,0,6.2832); ctx.fill();
+      }
       ctx.restore();
     }
     ctx.restore();
   }
   function drawSquirrel(t){
     if(squirrel.nextAt===0) squirrel.nextAt=t+2200+Math.random()*2800;
-    if(t>=squirrel.nextAt){
-      squirrel.target=(Math.random()*2-1);
-      squirrel.nextAt=t+3500+Math.random()*3500;
-    }
-    var diff=squirrel.target-squirrel.offset;
-    squirrel.offset+=diff*0.035;
-    var moving=Math.abs(diff)>0.04;
-    if(moving) squirrel.dir=diff>0?1:-1;
+    if(squirrel.nextTreeAt===0) squirrel.nextTreeAt=t+8000+Math.random()*7000;
     var cx=W/2, baseY=H*0.875, treeH=H*0.60, s=treeH*0.052;
-    var bx=cx-treeH*0.41+squirrel.offset*treeH*0.032;
-    var by=baseY+treeH*0.044-(moving?Math.abs(Math.sin(t*0.016))*s*0.14:0);
-    var tailAng=Math.sin(t*0.0038)*0.12+(moving?Math.sin(t*0.018)*0.18:0);
+    var snowX=cx-treeH*0.41+squirrel.offset*treeH*0.032, snowY=baseY+treeH*0.044;
+    var treeX=cx-treeH*0.195, treeY=baseY-treeH*0.115;
+    var bx=snowX, by=snowY, sqSx=1, sqSy=1, moving=false, inAir=false;
+    if(squirrel.treePhase===0){
+      if(t>=squirrel.nextTreeAt){
+        squirrel.treePhase=1; squirrel.treeStart=t;
+        squirrel.fromX=snowX; squirrel.fromY=snowY;
+        squirrel.stayDur=2200+Math.random()*1300;
+      } else {
+        if(t>=squirrel.nextAt){
+          squirrel.target=(Math.random()*2-1);
+          squirrel.nextAt=t+3500+Math.random()*3500;
+        }
+        var diff=squirrel.target-squirrel.offset;
+        squirrel.offset+=diff*0.035;
+        moving=Math.abs(diff)>0.04;
+        if(moving) squirrel.dir=diff>0?1:-1;
+        snowX=cx-treeH*0.41+squirrel.offset*treeH*0.032;
+        bx=snowX;
+        by=snowY-(moving?Math.abs(Math.sin(t*0.016))*s*0.14:0);
+      }
+    }
+    if(squirrel.treePhase===1){
+      var upDur=660, u=Math.min(1,(t-squirrel.treeStart)/upDur);
+      var eu=u<0.5? 2*u*u : 1-Math.pow(-2*u+2,2)/2;
+      bx=squirrel.fromX+(treeX-squirrel.fromX)*eu;
+      by=squirrel.fromY+(treeY-squirrel.fromY)*eu-Math.sin(u*3.1416)*treeH*0.135;
+      squirrel.dir=1; inAir=true;
+      if(u<0.18){ var p0=1-u/0.18; sqSx=1+0.14*p0; sqSy=1-0.14*p0; }
+      else if(u<0.82){ var p1=Math.sin((u-0.18)/0.64*3.1416); sqSx=1-0.12*p1; sqSy=1+0.15*p1; }
+      else { var p2=(u-0.82)/0.18; sqSx=1+0.16*p2; sqSy=1-0.16*p2; }
+      if(u>=1){ squirrel.treePhase=2; squirrel.treeStart=t; inAir=false; }
+    } else if(squirrel.treePhase===2){
+      var ageP=t-squirrel.treeStart;
+      bx=treeX; by=treeY;
+      if(ageP<240){
+        var lp=1-ageP/240;
+        sqSx=1+0.16*lp*Math.cos(lp*3.1416*0.5);
+        sqSy=1-0.16*lp*Math.cos(lp*3.1416*0.5);
+      }
+      squirrel.dir=(ageP>squirrel.stayDur*0.42 && ageP<squirrel.stayDur*0.78)? -1 : 1;
+      by-=Math.abs(Math.sin(ageP*0.005))*s*0.04;
+      if(ageP>=squirrel.stayDur){ squirrel.treePhase=3; squirrel.treeStart=t; }
+    } else if(squirrel.treePhase===3){
+      var dnDur=680, d=Math.min(1,(t-squirrel.treeStart)/dnDur);
+      var ed=d<0.5? 2*d*d : 1-Math.pow(-2*d+2,2)/2;
+      var landX=cx-treeH*0.41+squirrel.offset*treeH*0.032, landY=baseY+treeH*0.044;
+      bx=treeX+(landX-treeX)*ed;
+      by=treeY+(landY-treeY)*ed-Math.sin(d*3.1416)*treeH*0.125;
+      squirrel.dir=-1; inAir=true;
+      if(d<0.16){ var q0=1-d/0.16; sqSx=1+0.12*q0; sqSy=1-0.12*q0; }
+      else if(d<0.82){ var q1=Math.sin((d-0.16)/0.66*3.1416); sqSx=1-0.11*q1; sqSy=1+0.14*q1; }
+      else { var q2=(d-0.82)/0.18; sqSx=1+0.18*q2; sqSy=1-0.17*q2; }
+      if(d>=1){
+        squirrel.treePhase=0;
+        squirrel.nextTreeAt=t+8000+Math.random()*7000;
+        squirrel.nextAt=t+1400+Math.random()*2200;
+      }
+    }
+    var tailAng=Math.sin(t*0.0038)*0.12+((moving||inAir)?Math.sin(t*0.018)*0.22:0);
     ctx.save();
     ctx.translate(bx,by);
-    ctx.scale(squirrel.dir,1);
-    ctx.fillStyle='rgba(16,26,40,0.34)';
-    ctx.beginPath(); ctx.ellipse(0,0,s*0.42,s*0.10,0,0,6.2832); ctx.fill();
+    ctx.scale(squirrel.dir*sqSx,sqSy);
+    if(!inAir){
+      ctx.fillStyle='rgba(16,26,40,0.34)';
+      ctx.beginPath(); ctx.ellipse(0,0,s*0.42,s*0.10,0,0,6.2832); ctx.fill();
+    }
     // 蓬松尾巴
     ctx.save();
     ctx.translate(-s*0.18,-s*0.16);
@@ -1759,6 +1934,77 @@
       }
       ctx.restore();
     }
+  }
+
+  // ---------- 双击上半球烟花（轻量粒子池 ≤20，带拖尾+渐隐） ----------
+  var fwPalettes=[
+    ['#ffe58f','#ff9c6e','#fff6d6'],
+    ['#7ee8ff','#b5c8ff','#ffffff'],
+    ['#ff85a1','#ffd670','#ffe8f0'],
+    ['#95f9b8','#7ee8ff','#fff4c2']
+  ];
+  function spawnFirework(pt){
+    var now=performance.now();
+    var fx=pt? Math.max(CX-R*0.48, Math.min(CX+R*0.48, pt.x)) : CX+(Math.random()-0.5)*R*0.45;
+    var rawY=pt? pt.y : CY-R*0.36;
+    var fy=(rawY<CY-R*0.12)? Math.max(CY-R*0.58, rawY) : (CY-R*(0.30+Math.random()*0.20));
+    var pal=fwPalettes[(Math.random()*fwPalettes.length)|0];
+    var count=18;
+    for(var i=0;i<count;i++){
+      if(fwParticles.length>=MAX_FW_PARTICLES) fwParticles.shift();
+      var ang=(i/count)*6.2832+(Math.random()-0.5)*0.24;
+      var spd=(1.35+Math.random()*1.45)*Math.max(0.65, W/400);
+      fwParticles.push({
+        x:fx, y:fy, px:fx, py:fy,
+        vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-0.25,
+        sz:Math.max(1.2, W*0.0048)*(0.75+Math.random()*0.55),
+        col:pal[i%pal.length],
+        start:now,
+        dur:760+Math.random()*280
+      });
+    }
+    if(fwRings.length>=2) fwRings.shift();
+    fwRings.push({x:fx, y:fy, col:pal[0], start:now, dur:320});
+    if(globe){
+      globe.classList.remove('shaking-mild');
+      void globe.offsetWidth;
+      globe.classList.add('shaking-mild');
+    }
+  }
+  function drawFireworks(now){
+    if(!fwParticles.length && !fwRings.length) return;
+    ctx.save();
+    for(var ri=fwRings.length-1;ri>=0;ri--){
+      var rObj=fwRings[ri], rAge=now-rObj.start;
+      if(rAge>=rObj.dur){ fwRings.splice(ri,1); continue; }
+      var rp=rAge/rObj.dur, rRad=R*(0.03+0.14*rp);
+      ctx.globalAlpha=(1-rp)*0.36;
+      ctx.strokeStyle=rObj.col;
+      ctx.lineWidth=Math.max(1, W*0.004*(1-rp));
+      ctx.beginPath(); ctx.arc(rObj.x, rObj.y, rRad, 0, 6.2832); ctx.stroke();
+    }
+    ctx.lineCap='round';
+    for(var i=fwParticles.length-1;i>=0;i--){
+      var fp=fwParticles[i], age=now-fp.start;
+      if(age>=fp.dur){ fwParticles.splice(i,1); continue; }
+      var p=age/fp.dur;
+      fp.px=fp.x; fp.py=fp.y;
+      fp.vx*=0.962; fp.vy=fp.vy*0.962+0.026;
+      fp.x+=fp.vx; fp.y+=fp.vy;
+      var al=p<0.15? p/0.15 : Math.pow(Math.max(0,(1-p)/0.85), 1.35);
+      var tx=fp.x-fp.vx*3.4, ty=fp.y-fp.vy*3.4;
+      ctx.globalAlpha=al*0.42;
+      ctx.strokeStyle=fp.col;
+      ctx.lineWidth=fp.sz*1.15;
+      ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(fp.x,fp.y); ctx.stroke();
+      ctx.globalAlpha=al;
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(fp.x,fp.y,fp.sz*0.72,0,6.2832); ctx.fill();
+      ctx.globalAlpha=al*0.85;
+      ctx.fillStyle=fp.col;
+      ctx.beginPath(); ctx.arc(fp.x,fp.y,fp.sz*1.15,0,6.2832); ctx.fill();
+    }
+    ctx.restore();
   }
 
   // ---------- 树顶光雨（4-6粒暖白细光点）与雪地刻字 ----------
@@ -1962,6 +2208,7 @@
       drawSnowman(W/2+treeH*0.415, baseY+treeH*0.045, treeH*0.095, snowmanProg, snowmanTarget===0, now);
     }
     drawGiftEffects(now);
+    drawFireworks(now);
     var windOsc=Math.sin(now*0.00042)*0.65+Math.sin(now*0.00019+1.1)*0.35;
     snowSwirl=windOsc*(0.48+boost*1.65);
     var exSnow=Math.max(0,(accum-0.35)/0.65);
@@ -2003,6 +2250,10 @@
     if(fogcv && Math.abs(fogLevel-lastFogOp)>0.003){
       lastFogOp=fogLevel;
       fogcv.style.opacity=fogLevel.toFixed(3);
+    }
+    var targetFrostOp=getFrostOpacity();
+    if(Math.abs(targetFrostOp-lastFrostOp)>0.025){
+      drawGlassLayer();
     }
     ctx.globalAlpha=1; ctx.restore();
     if(baseHalo){
@@ -2083,6 +2334,7 @@
   var globe=document.getElementById('globe'), lastShake=0;
   var holdTimer=null, holdPtrId=null, holdX=0, holdY=0, holdFired=false;
   var giftPendingPtrId=null, giftPendingIdx=-1, snowmanPendingPtrId=null, treePendingPtrId=null, skyTapPending=false;
+  var skyTapTimer=null, lastSkyTapAt=0, lastSkyTapX=0, lastSkyTapY=0, skyDblCandidate=false, DBL_TAP_MS=270;
   var activePtrs=[], isPinching=false, wasPinchGesture=false, pinchStartDist=0, pinchStartZoom=1;
   var dragPtrId=null, dragStartX=0, dragStartY=0, isDraggingTilt=false;
   function findPtrIdx(id){
@@ -2098,6 +2350,7 @@
     snowmanPendingPtrId=null;
     treePendingPtrId=null;
     skyTapPending=false;
+    skyDblCandidate=false;
   }
   function triggerTreePulse(){
     treePulseStart=performance.now();
@@ -2165,6 +2418,7 @@
       activePtrs.push({id:e.pointerId, x:e.clientX, y:e.clientY});
     }
     if(activePtrs.length>=2){
+      if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
       clearHold(); clearPending();
       isDraggingTilt=false; dragPtrId=null;
       tiltXTarget=0; tiltYTarget=0; tiltRotTarget=0;
@@ -2179,6 +2433,7 @@
     dragPtrId=e.pointerId; dragStartX=e.clientX; dragStartY=e.clientY;
     var hitGi=hitTestGift(e.clientX, e.clientY);
     if(hitGi>=0){
+      if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
       giftPendingPtrId=e.pointerId; giftPendingIdx=hitGi;
       holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
       holdTimer=setTimeout(function(){
@@ -2195,20 +2450,27 @@
       return;
     }
     if(hitTestSnowman(e.clientX, e.clientY)){
+      if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
       snowmanPendingPtrId=e.pointerId;
       holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
       return;
     }
     var hitTree=hitTestTree(e.clientX, e.clientY);
     if(hitTree){
+      if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
       treePendingPtrId=e.pointerId;
     } else {
       skyTapPending=true;
+      var skyPt=clientToSceneCoords(e.clientX, e.clientY);
+      if(skyPt && skyTapTimer && (performance.now()-lastSkyTapAt)<=DBL_TAP_MS && Math.hypot(e.clientX-lastSkyTapX, e.clientY-lastSkyTapY)<42){
+        clearTimeout(skyTapTimer); skyTapTimer=null;
+        skyDblCandidate=true;
+      }
     }
     holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
     holdTimer=setTimeout(function(){
       holdTimer=null; holdPtrId=null; holdFired=true;
-      treePendingPtrId=null; skyTapPending=false;
+      treePendingPtrId=null; skyTapPending=false; skyDblCandidate=false;
       snowmanTarget=snowmanTarget?0:1;
     }, 1000);
   });
@@ -2228,6 +2490,7 @@
     if(e.pointerId===dragPtrId){
       var dx=e.clientX-dragStartX, dy=e.clientY-dragStartY;
       if(!isDraggingTilt && Math.hypot(dx, dy)>14){
+        if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
         isDraggingTilt=true;
         clearHold();
         clearPending();
@@ -2289,7 +2552,18 @@
       return;
     }
     if(skyTapPending && !holdFired){
-      shake();
+      var skyEndPt=clientToSceneCoords(e.clientX, e.clientY);
+      if(skyDblCandidate && skyEndPt){
+        skyDblCandidate=false; lastSkyTapAt=0;
+        spawnFirework(skyEndPt);
+      } else if(skyEndPt){
+        lastSkyTapAt=performance.now(); lastSkyTapX=e.clientX; lastSkyTapY=e.clientY;
+        if(skyTapTimer) clearTimeout(skyTapTimer);
+        skyTapTimer=setTimeout(function(){ skyTapTimer=null; shake(); }, DBL_TAP_MS);
+      } else {
+        if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
+        shake();
+      }
     }
     if(e.pointerId===holdPtrId || skyTapPending){
       clearHold(); clearPending();
@@ -2297,6 +2571,26 @@
   }
   window.addEventListener('pointerup', function(e){ handlePtrEnd(e, false); });
   window.addEventListener('pointercancel', function(e){ handlePtrEnd(e, true); });
+  // ---------- 底座铭牌切换 ----------
+  var plateEl=document.getElementById('plate');
+  var PLATE_TEXTS=['MERRY CHRISTMAS','HAPPY NEW YEAR','"MERRY CHRISTMAS" from XS'];
+  var plateIdx=0, plateFadeTimer=null;
+  if(plateEl){
+    plateEl.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+    plateEl.addEventListener('pointerup', function(e){ e.stopPropagation(); });
+    plateEl.addEventListener('click', function(e){
+      e.stopPropagation();
+      plateIdx=(plateIdx+1)%PLATE_TEXTS.length;
+      if(plateFadeTimer) clearTimeout(plateFadeTimer);
+      plateEl.style.opacity='0';
+      plateFadeTimer=setTimeout(function(){
+        plateFadeTimer=null;
+        plateEl.textContent=PLATE_TEXTS[plateIdx];
+        plateEl.style.letterSpacing=(plateIdx===2)?'.05em':'.14em';
+        plateEl.style.opacity='1';
+      }, 170);
+    });
+  }
   globe.addEventListener('wheel', function(e){
     e.preventDefault();
     var d=Math.max(-120, Math.min(120, e.deltaY));
