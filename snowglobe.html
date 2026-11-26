@@ -71,6 +71,15 @@
     background: radial-gradient(ellipse, rgba(255,255,255,.28), rgba(255,255,255,0) 70%);
     transform:rotate(-20deg); pointer-events:none;
   }
+  .base-halo {
+    position:absolute; bottom:-2.2%; left:50%; transform:translateX(-50%);
+    width:68%; height:21.5%;
+    border-radius:18px 18px 26px 26px / 14px 14px 28px 28px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(255,216,126,.18) 44%, rgba(255,196,86,.44) 72%, rgba(255,172,58,0) 100%);
+    box-shadow: 0 0 18px rgba(255,204,92,.45), inset 0 0 12px rgba(255,228,150,.28);
+    border: 1px solid rgba(255,228,148,.38);
+    pointer-events:none; opacity:.20; will-change:opacity, transform;
+  }
   .base {
     position:absolute; bottom:0; left:50%; transform:translateX(-50%);
     width:62%; height:17%;
@@ -121,6 +130,7 @@
       <div class="glare"></div>
       <div class="glare2"></div>
     </div>
+    <div class="base-halo" id="base-halo"></div>
     <div class="base"><div class="plate">MERRY CHRISTMAS</div></div>
   </div>
   <div class="hint">🫧 <b>摇一摇 / 点一点球</b> 下大雪·积雪变厚</div>
@@ -145,6 +155,10 @@
   var squirrel={offset:0, target:0, dir:1, nextAt:0};
   var giftStates=[], giftParticles=[], giftLabels=[], MAX_GIFT_PARTICLES=24;
   var auroraStormMix=0, snowmanBlinkAt=0, snowmanBlinkUntil=0;
+  var fogLevel=1, fogGrad=null;
+  var lightRain=[], MAX_LIGHT_RAIN=5;
+  var treePulseStart=-9999, treePulseActive=false, TREE_PULSE_DUR=520;
+  var baseHalo=document.getElementById('base-halo');
   var seed=7;
   function rnd(){ seed=(seed*9301+49297)%233280; return seed/233280; }
 
@@ -169,6 +183,11 @@
     acv.width=W; acv.height=H;
     tcv.width=W; tcv.height=H;
     treeLayer.width=W; treeLayer.height=H;
+    fogGrad=ctx.createRadialGradient(CX,CY,R*0.36,CX,CY,R*1.02);
+    fogGrad.addColorStop(0,'rgba(235,245,255,0)');
+    fogGrad.addColorStop(0.55,'rgba(232,244,255,0.03)');
+    fogGrad.addColorStop(0.84,'rgba(236,246,255,0.13)');
+    fogGrad.addColorStop(1,'rgba(242,249,255,0.23)');
     drawTree();
   }
 
@@ -244,9 +263,15 @@
     }
     // 天使顶
     angel(cx, baseY-treeH*0.98, treeH*0.085);
-    renderTreeScene(shakeActive? Math.max(0, performance.now()-shakeStart) : 0);
+    renderTreeScene(shakeActive? Math.max(0, performance.now()-shakeStart) : 0, 0);
   }
-  function renderTreeScene(shakeElapsed){
+  function applyTreeSway(targetCtx, ang){
+    if(!ang) return;
+    targetCtx.translate(W/2, H*0.875);
+    targetCtx.rotate(ang);
+    targetCtx.translate(-W/2, -H*0.875);
+  }
+  function renderTreeScene(shakeElapsed, treeSwayAng){
     tctx.clearRect(0,0,W,H);
     var cx=W/2, baseY=H*0.875, treeH=H*0.60;
     var g0=tctx.createRadialGradient(cx,baseY-treeH*0.45,6,cx,baseY-treeH*0.45,treeH*0.9);
@@ -302,7 +327,14 @@
       var op=giftStates[gi]? giftStates[gi].prog : 0;
       gift(gs.x, gs.y, gs.w, gs.h, gs.c1, gs.c2, wob, gi, p, op);
     }
-    tctx.drawImage(treeLayer,0,0);
+    if(treeSwayAng){
+      tctx.save();
+      applyTreeSway(tctx, treeSwayAng);
+      tctx.drawImage(treeLayer,0,0);
+      tctx.restore();
+    } else {
+      tctx.drawImage(treeLayer,0,0);
+    }
   }
   function drawSolidTier(cx,topY,halfW,lh,seedv){
     var teeth=18, i, tt, x, y, jag;
@@ -370,7 +402,7 @@
     tlctx.fillStyle='rgba(255,255,255,0.88)';
     tlctx.beginPath(); tlctx.arc(ex,ey-1,(1.2+Math.random()*1.2)*(0.7+accum*0.8),0,6.2832); tlctx.fill();
   }
-  function drawLamps(t){
+  function drawLamps(t, pulseP){
     var palettes=[ ['#fff6da'],
                    ['#ff5d5d','#ffd75e','#7ec8ff','#ff9de2','#7dff9e'],
                    ['#ff4d4d','#ffd75e'],
@@ -378,6 +410,7 @@
     var mode=lampMode%4;
     var pal=palettes[mode];
     var phase=(t*0.00055)%1;
+    var pBoost=pulseP||0;
     var mGlow=1+musicEnergy*0.35, mAlpha=1+musicEnergy*0.22, mRay=1+musicEnergy*0.12;
     for(var i=0;i<lamps.length;i++){ var L=lamps[i];
       var tw;
@@ -387,15 +420,17 @@
       } else {
         tw=0.5+0.5*Math.sin(t*0.001*L.sp+L.ph);
       }
+      if(pBoost>0) tw=tw+(1-tw)*pBoost;
       var al=Math.min(1,(mode===3 ? (0.12+0.88*tw) : (0.35+0.65*tw))*mAlpha);
+      if(pBoost>0) al=Math.min(1, al+(1-al)*pBoost);
       var col=pal[L.ci%pal.length];
       ctx.save();
       ctx.globalAlpha=al;
-      ctx.shadowColor=col; ctx.shadowBlur=(8+10*tw)*mGlow;
+      ctx.shadowColor=col; ctx.shadowBlur=(8+10*tw)*mGlow+6*pBoost;
       ctx.fillStyle=col;
-      ctx.beginPath(); ctx.arc(L.x,L.y,L.r*(0.8+0.4*tw),0,6.2832); ctx.fill();
+      ctx.beginPath(); ctx.arc(L.x,L.y,L.r*(0.8+0.4*tw+0.25*pBoost),0,6.2832); ctx.fill();
       ctx.strokeStyle=col; ctx.globalAlpha=al*0.8; ctx.lineWidth=0.8;
-      var sr=L.r*(1.6+1.6*tw)*mRay;
+      var sr=L.r*(1.6+1.6*tw)*mRay*(1+0.25*pBoost);
       ctx.beginPath();
       ctx.moveTo(L.x-sr,L.y); ctx.lineTo(L.x+sr,L.y);
       ctx.moveTo(L.x,L.y-sr); ctx.lineTo(L.x,L.y+sr);
@@ -950,11 +985,87 @@
     }
   }
 
+  // ---------- 树顶光雨（4-6粒暖白细光点）与雪地刻字 ----------
+  function resetLightDrop(p, randAge){
+    p.dur=2400+Math.random()*1300;
+    p.age=randAge? Math.random()*p.dur : 0;
+    p.ox=(Math.random()-0.5)*1.5;
+    p.oy=-0.55+Math.random()*0.65;
+    p.vx=(Math.random()-0.5)*0.22;
+    p.vy=0.55+Math.random()*0.45;
+    p.r=0.85+Math.random()*0.55;
+    p.ph=Math.random()*6.2832;
+  }
+  for(var lri=0;lri<MAX_LIGHT_RAIN;lri++){
+    var lrp={};
+    resetLightDrop(lrp, true);
+    lightRain.push(lrp);
+  }
+  function drawLightRain(now, dt){
+    var cx=W/2, baseY=H*0.875, treeH=H*0.60, s=treeH*0.085, topY=baseY-treeH*0.98;
+    var scale=Math.max(0.5, W/400);
+    ctx.save();
+    for(var i=0;i<lightRain.length;i++){
+      var p=lightRain[i];
+      p.age+=dt;
+      if(p.age>=p.dur) resetLightDrop(p, false);
+      var pr=p.age/p.dur;
+      var fade=pr<0.18? pr/0.18 : Math.pow(Math.max(0,(1-pr)/0.82), 1.25);
+      var shimmer=0.72+0.28*Math.sin(now*0.005+p.ph);
+      var al=fade*shimmer*0.82;
+      if(al<=0.01) continue;
+      var px=cx+p.ox*s+p.vx*s*pr*2.2+Math.sin(p.ph+pr*4.5)*s*0.10;
+      var py=topY+p.oy*s+p.vy*treeH*0.32*pr;
+      var rr=p.r*scale;
+      ctx.globalAlpha=al*0.28;
+      ctx.fillStyle='#ffe8ad';
+      ctx.beginPath(); ctx.arc(px,py,rr*2.2,0,6.2832); ctx.fill();
+      ctx.globalAlpha=al;
+      ctx.fillStyle='#fff9e6';
+      ctx.beginPath(); ctx.arc(px,py,rr,0,6.2832); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawSnowText(now){
+    var cyc=(now%11000)/11000;
+    var wave=0.5-0.5*Math.cos(cyc*6.2832);
+    var al=Math.pow(wave,0.85)*0.48;
+    if(al<=0.01) return;
+    var ex=Math.max(0,(accum-0.35)/0.65);
+    var tx=W/2, ty=H*(0.931-ex*0.004);
+    var fsz=Math.max(8,Math.round(H*0.025));
+    ctx.save();
+    ctx.font='italic 600 '+fsz+'px Georgia,"Times New Roman",serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.globalAlpha=al*0.55;
+    ctx.fillStyle='#8aa6c9';
+    ctx.fillText('Merry Christmas', tx, ty+0.8);
+    ctx.globalAlpha=al;
+    ctx.fillStyle='#f3e6c4';
+    ctx.fillText('Merry Christmas', tx, ty);
+    ctx.restore();
+  }
+
   // ---------- 球内雪花 ----------
   function inCircle(scale){ var a=Math.random()*6.2832, rr=Math.sqrt(Math.random())*R*(scale||0.9); return {x:CX+Math.cos(a)*rr, y:CY+Math.sin(a)*rr}; }
-  function newFlake(){ var p=inCircle(0.9); return { x:p.x, y:p.y, r:Math.random()*2.4+0.7, vy:Math.random()*0.5+0.25, ph:Math.random()*6.28, o:Math.random()*0.55+0.35, landed:false, landAt:0, stayDur:300+Math.random()*300, landOff:Math.random()*0.045 }; }
-  for(var i=0;i<70;i++) flakes.push(newFlake());
+  function newFlake(idx){ var p=inCircle(0.9); return { x:p.x, y:p.y, r:Math.random()*2.4+0.7, vy:Math.random()*0.5+0.25, ph:Math.random()*6.28, o:Math.random()*0.55+0.35, landed:false, landAt:0, stayDur:300+Math.random()*300, landOff:Math.random()*0.045, crystal:(idx%3===0), rot:Math.random()*6.2832, vrot:(Math.random()-0.5)*0.022 }; }
+  for(var i=0;i<70;i++) flakes.push(newFlake(i));
   function resetTop(f){ var dx=f.x-CX; var half=Math.sqrt(Math.max(4,R*R-dx*dx)); f.y=CY-half*0.92; f.vy=Math.random()*0.5+0.25; f.landed=false; }
+  function drawFlake(f, alpha){
+    if(alpha<=0.005) return;
+    ctx.globalAlpha=alpha;
+    if(f.crystal){
+      var cr=f.r*1.35+0.75;
+      ctx.beginPath();
+      for(var a=0;a<3;a++){
+        var ang=f.rot+a*1.0472, dx=Math.cos(ang)*cr, dy=Math.sin(ang)*cr;
+        ctx.moveTo(f.x-dx, f.y-dy); ctx.lineTo(f.x+dx, f.y+dy);
+      }
+      ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,6.2832); ctx.fill();
+    }
+  }
   function tick(now){
     var dt=lastTickNow? Math.min(64,Math.max(0,now-lastTickNow)) : 16.67;
     lastTickNow=now;
@@ -970,22 +1081,40 @@
         giftAnim=true;
       }
     }
+    var treePulseP=0, treeSwayAng=0, needTreeRedraw=false;
+    if(treePulseActive){
+      var tp=Math.max(0,now-treePulseStart);
+      if(tp<TREE_PULSE_DUR){
+        var tu=tp/TREE_PULSE_DUR;
+        treePulseP=tu<0.16? (tu/0.16) : Math.pow(Math.max(0,(1-tu)/0.84), 1.35);
+        treeSwayAng=Math.sin(tu*6.2832)*(1-tu)*0.028;
+      } else {
+        treePulseActive=false;
+        needTreeRedraw=true;
+      }
+    }
+    var shakeEl=0;
     if(shakeActive){
-      var el=Math.max(0,now-shakeStart);
-      if(el<500){ renderTreeScene(el); }
-      else { shakeActive=false; renderTreeScene(0); }
-    } else if(giftAnim){
-      renderTreeScene(0);
+      shakeEl=Math.max(0,now-shakeStart);
+      if(shakeEl>=500){ shakeActive=false; shakeEl=0; needTreeRedraw=true; }
+    }
+    if(shakeActive || giftAnim || treePulseActive || needTreeRedraw){
+      renderTreeScene(shakeEl, treeSwayAng);
     }
     ctx.clearRect(0,0,W,H);
     ctx.save(); ctx.beginPath(); ctx.arc(CX,CY,R,0,6.2832); ctx.clip();
     drawWindowGlow(now);
     drawSmokes();
-    drawLamps(now);
+    ctx.save();
+    applyTreeSway(ctx, treeSwayAng);
+    drawLamps(now, treePulseP);
     drawAngelWings(now);
     drawAngelHalo(now);
+    ctx.restore();
+    drawLightRain(now, dt);
     drawFootprints();
     drawSquirrel(now);
+    drawSnowText(now);
     if(snowmanProg<snowmanTarget){ snowmanProg=Math.min(1,snowmanProg+0.024); hatProg=0; }
     else if(snowmanProg>snowmanTarget){ snowmanProg=Math.max(0,snowmanProg-0.028); if(snowmanProg<=0) hatProg=0; }
     if(snowmanTarget===1 && snowmanProg>=1 && hatProg<1) hatProg=Math.min(1,hatProg+0.045);
@@ -996,16 +1125,17 @@
     drawGiftEffects(now);
     var exSnow=Math.max(0,(accum-0.35)/0.65);
     ctx.fillStyle='#ffffff';
+    ctx.strokeStyle='rgba(242,248,255,0.96)'; ctx.lineWidth=0.9; ctx.lineCap='round';
     for(var i=0;i<flakes.length;i++){ var f=flakes[i];
       if(f.landed){
         var age=now-f.landAt, fadeDur=180;
         if(age>=f.stayDur+fadeDur){ resetTop(f); continue; }
         var fade=age<f.stayDur? 1 : Math.max(0,1-(age-f.stayDur)/fadeDur);
-        ctx.globalAlpha=f.o*fade;
-        ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,6.2832); ctx.fill();
+        drawFlake(f, f.o*fade);
         continue;
       }
       f.ph+=0.02+boost*0.06;
+      if(f.crystal) f.rot+=f.vrot*(1+boost*2.2);
       f.x+=Math.sin(f.ph)*(0.35+boost*1.8)+(Math.random()-0.5)*boost*2.4;
       f.y+=(0.35+boost*2.8)*f.r*0.8+0.2;
       var dx=f.x-CX, dy=f.y-CY, d2=dx*dx+dy*dy;
@@ -1016,9 +1146,25 @@
         f.landed=true; f.landAt=now; f.stayDur=300+Math.random()*300;
       }
       else if(d2>R*R){ f.x=CX+(Math.random()-0.5)*R*0.8; f.y=CY-R*0.85; }
-      ctx.globalAlpha=f.o; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,6.2832); ctx.fill();
+      drawFlake(f, f.o);
+    }
+    if(fogLevel<1){
+      var fogRate=boost>0.4? 0.00004 : 0.00014;
+      fogLevel=Math.min(1, fogLevel+dt*fogRate);
+    }
+    if(fogGrad && fogLevel>0.01){
+      ctx.globalAlpha=fogLevel;
+      ctx.fillStyle=fogGrad;
+      ctx.fillRect(0,0,W,H);
     }
     ctx.globalAlpha=1; ctx.restore();
+    if(baseHalo){
+      var breath=0.5+0.5*Math.sin(now*0.0018);
+      var hOp=Math.min(0.95, 0.16+0.10*breath+musicEnergy*0.72);
+      var hSc=1+0.012*breath+musicEnergy*0.075;
+      baseHalo.style.opacity=hOp.toFixed(3);
+      baseHalo.style.transform='translateX(-50%) scale('+hSc.toFixed(4)+')';
+    }
     if(boost>0) boost=Math.max(0,boost-0.018);
     // 积雪缓慢回落 + 节流重画树
     if(accum>0.35){ accum=Math.max(0.35,accum-0.0008); if(Math.abs(accum-lastTreeAccum)>0.06) accumChanged=true; }
@@ -1045,14 +1191,22 @@
     ax.globalAlpha=1; requestAnimationFrame(atick); })();
   // ---------- 摇一摇 / 点击 / 长按 ----------
   var globe=document.getElementById('globe'), lastShake=0;
-  var holdTimer=null, holdPtrId=null, holdX=0, holdY=0;
+  var holdTimer=null, holdPtrId=null, holdX=0, holdY=0, treePendingPtrId=null;
   function clearHold(){
     if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; }
     holdPtrId=null;
   }
+  function clearTreePending(){
+    treePendingPtrId=null;
+  }
+  function triggerTreePulse(){
+    treePulseStart=performance.now();
+    treePulseActive=true;
+  }
   function shake(){
     var now=Date.now(); if(now-lastShake<500) return; lastShake=now;
     boost=1; accum=Math.min(1,accum+0.22); accumChanged=true;
+    fogLevel=Math.min(fogLevel,0.16);
     updateGroundSnow();
     shakeStart=performance.now(); shakeActive=true;
     globe.classList.remove('shaking'); void globe.offsetWidth; globe.classList.add('shaking');
@@ -1075,10 +1229,22 @@
     }
     return -1;
   }
+  function hitTestTree(clientX, clientY){
+    var br=ball.getBoundingClientRect();
+    if(!br.width || !br.height) return false;
+    var px=(clientX-br.left)*(W/br.width), py=(clientY-br.top)*(H/br.height);
+    if((px-CX)*(px-CX)+(py-CY)*(py-CY)>R*R) return false;
+    var cx=W/2, baseY=H*0.875, treeH=H*0.60;
+    var topY=baseY-treeH*1.04, botY=baseY-treeH*0.02;
+    if(py<topY || py>botY) return false;
+    var v=(py-topY)/(botY-topY);
+    var halfW=treeH*(0.07+0.36*v);
+    return Math.abs(px-cx)<=halfW;
+  }
   globe.addEventListener('pointerdown', function(e){
     var hitGi=hitTestGift(e.clientX, e.clientY);
     if(hitGi>=0){
-      clearHold();
+      clearHold(); clearTreePending();
       unlockMusic();
       var gst=giftStates[hitGi];
       if(gst){
@@ -1087,22 +1253,37 @@
       }
       return;
     }
-    shake(); unlockMusic();
-    clearHold();
+    var hitTree=hitTestTree(e.clientX, e.clientY);
+    clearHold(); clearTreePending();
+    unlockMusic();
+    if(hitTree){
+      treePendingPtrId=e.pointerId;
+    } else {
+      shake();
+    }
     holdPtrId=e.pointerId; holdX=e.clientX; holdY=e.clientY;
     holdTimer=setTimeout(function(){
       holdTimer=null;
+      treePendingPtrId=null;
       snowmanTarget=snowmanTarget?0:1;
     }, 1000);
   });
   globe.addEventListener('pointermove', function(e){
-    if(!holdTimer || e.pointerId!==holdPtrId) return;
-    if(Math.hypot(e.clientX-holdX, e.clientY-holdY)>28) clearHold();
+    if(e.pointerId!==holdPtrId) return;
+    if(Math.hypot(e.clientX-holdX, e.clientY-holdY)>28){
+      clearHold();
+      clearTreePending();
+    }
   });
   window.addEventListener('pointerup', function(e){
+    if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
+      triggerTreePulse();
+      clearTreePending();
+    }
     if(holdTimer && e.pointerId===holdPtrId) clearHold();
   });
   window.addEventListener('pointercancel', function(e){
+    if(treePendingPtrId!==null && e.pointerId===treePendingPtrId) clearTreePending();
     if(holdTimer && e.pointerId===holdPtrId) clearHold();
   });
   globe.addEventListener('contextmenu', function(e){ e.preventDefault(); });
