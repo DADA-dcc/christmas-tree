@@ -130,7 +130,7 @@
             
             <div class="setup-group">
                 <label class="setup-label">Greeting Message</label>
-                <input type="text" id="greeting-input" class="setup-input" placeholder="Merry Christmas" value="Merry Christmas" maxlength="25">
+                <input type="text" id="greeting-input" class="setup-input" placeholder="Merry Christmas" value='"Merry Christmas" from XS' maxlength="25">
             </div>
 
             <div class="setup-group">
@@ -158,7 +158,7 @@
     <canvas id="fireworks-canvas"></canvas>
 
     <div id="ui-layer">
-        <h1 id="main-title">Merry Christmas</h1>
+        <h1 id="main-title">"Merry Christmas" from XS</h1>
     </div>
 
     <!-- WEBCAM -->
@@ -251,7 +251,7 @@
 
         function finishSetupAndReveal() {
             // 1. Update Title
-            const greeting = document.getElementById('greeting-input').value.trim() || '"Merry Christmas" from XS';
+            const greeting = document.getElementById('greeting-input').value.trim() || "Merry Christmas";
             document.getElementById('main-title').innerText = greeting;
 
             // 2. Inject Photos into Running Scene
@@ -287,14 +287,15 @@
   var a=document.getElementById('bgm'); if(a){ try{ a.volume=0.55; a.play().catch(function(){}); }catch(e){} }
   document.addEventListener('touchstart',unlock); document.addEventListener('click',unlock);
 })();
-// ===== 自动播放补丁（免摄像头，打开即看）=====
+// ===== 自动播放补丁 =====
 window.addEventListener('load', function(){
   setTimeout(function(){
     try{
       var sl=document.getElementById('system-loader'); if(sl) sl.style.display='none';
       var ss=document.getElementById('setup-screen'); if(ss) ss.style.display='none';
       finishSetupAndReveal();
-      var mt=document.getElementById('main-title'); if(mt) mt.innerText='"Merry Christmas" from XS';
+      var setT=function(){ var mt=document.getElementById('main-title'); if(mt) mt.innerText='"Merry Christmas" from XS'; };
+      setT(); setTimeout(setT,1500); setTimeout(setT,3000);
     }catch(e){ console.warn('auto-play:', e); }
   }, 700);
 });
