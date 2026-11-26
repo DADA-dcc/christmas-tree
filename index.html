@@ -278,7 +278,19 @@
             }, 800);
         }
 
-        window.addEventListener('keydown', (e) => {
+        
+// ===== 自动播放补丁（免摄像头，打开即看）=====
+window.addEventListener('load', function(){
+  setTimeout(function(){
+    try{
+      var sl=document.getElementById('system-loader'); if(sl) sl.style.display='none';
+      var ss=document.getElementById('setup-screen'); if(ss) ss.style.display='none';
+      finishSetupAndReveal();
+    }catch(e){ console.warn('auto-play:', e); }
+  }, 700);
+});
+
+window.addEventListener('keydown', (e) => {
             if(e.key.toLowerCase() === 'r') location.reload();
         });
     </script>
@@ -673,6 +685,11 @@
             particleSystem.forEach(p => p.update(dt, STATE.mode, STATE.focusTarget));
             composer.render();
         }
-    </script>
+    
+// ===== 自动烟花循环 =====
+setTimeout(function(){ try{ triggerChapter3Fireworks(); }catch(e){} }, 3500);
+setInterval(function(){ try{ triggerChapter3Fireworks(); }catch(e){} }, 9000);
+
+</script>
 </body>
 </html>
