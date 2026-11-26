@@ -249,7 +249,7 @@
 
         function finishSetupAndReveal() {
             // 1. Update Title
-            const greeting = document.getElementById('greeting-input').value.trim() || "Merry Christmas";
+            const greeting = document.getElementById('greeting-input').value.trim() || '"Merry Christmas" from XS';
             document.getElementById('main-title').innerText = greeting;
 
             // 2. Inject Photos into Running Scene
@@ -286,6 +286,7 @@ window.addEventListener('load', function(){
       var sl=document.getElementById('system-loader'); if(sl) sl.style.display='none';
       var ss=document.getElementById('setup-screen'); if(ss) ss.style.display='none';
       finishSetupAndReveal();
+      var mt=document.getElementById('main-title'); if(mt) mt.innerText='"Merry Christmas" from XS';
     }catch(e){ console.warn('auto-play:', e); }
   }, 700);
 });
