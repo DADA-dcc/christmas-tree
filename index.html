@@ -111,6 +111,12 @@
             }
         }
     </script>
+
+<style>
+#main-title{ text-shadow:0 0 16px rgba(255,214,120,.9),0 0 42px rgba(255,170,60,.5),0 2px 6px rgba(0,0,0,.6) !important; letter-spacing:.06em; }
+#snowfx{ position:fixed; inset:0; z-index:6; pointer-events:none; }
+#vignette{ position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse at 50% 120%, rgba(255,150,60,.16), transparent 55%), radial-gradient(ellipse at 50% -20%, rgba(90,140,255,.10), transparent 60%); }
+</style>
 </head>
 <body>
 <audio id="bgm" src="bgm.mp3" loop muted preload="auto"></audio>
@@ -700,6 +706,25 @@ window.addEventListener('keydown', (e) => {
 setTimeout(function(){ try{ triggerChapter3Fireworks(); }catch(e){} }, 3500);
 setInterval(function(){ try{ triggerChapter3Fireworks(); }catch(e){} }, 9000);
 
+</script>
+
+<canvas id="snowfx"></canvas><div id="vignette"></div>
+<script>
+(function(){
+  var c=document.getElementById('snowfx'); if(!c||!c.getContext)return;
+  var x=c.getContext('2d'),W,H,flakes=[];
+  function rs(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  rs(); window.addEventListener('resize',rs);
+  var N=Math.min(120,Math.round(window.innerWidth/12));
+  for(var i=0;i<N;i++)flakes.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*2.6+0.8,s:Math.random()*0.9+0.35,d:Math.random()*6.28,o:Math.random()*0.5+0.3});
+  function tick(){x.clearRect(0,0,W,H);x.fillStyle='#ffffff';
+    for(var i=0;i<flakes.length;i++){var f=flakes[i];
+      x.globalAlpha=f.o;x.beginPath();x.arc(f.x,f.y,f.r,0,6.2832);x.fill();
+      f.y+=f.s; f.x+=Math.sin(f.d)*0.45; f.d+=0.012;
+      if(f.y>H+6){f.y=-6;f.x=Math.random()*W;}}
+    x.globalAlpha=1; requestAnimationFrame(tick);}
+  tick();
+})();
 </script>
 </body>
 </html>
