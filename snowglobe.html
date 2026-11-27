@@ -348,6 +348,177 @@ function buildSnowmanFootprints(a){
 
 
 
+
+// ===== v19 公共（彩带/落雪/鼠标雪迹/麋鹿/祝福语/倒计时）=====
+function treeGeom(){ var bY=H*0.875, tH=H*0.60; return { bY:bY, tH:tH, topY:bY-tH*0.98 }; }
+function treeHalfWx(g,s){ return g.tH*(0.06+0.36*s); }
+// 1) 螺旋彩带
+function drawTinsel(tl){
+  var g=treeGeom(), turns=4.2, steps=220;
+  var bands=[
+    { phase:0, base:'rgba(212,165,40,0.95)', hi:'rgba(255,246,190,0.95)', spark:'#fffbe0' },
+    { phase:Math.PI, base:'rgba(190,28,40,0.92)', hi:'rgba(255,150,150,0.85)', spark:'#ffe0e0' }
+  ];
+  tl.save(); tl.lineCap='round';
+  for(var b=0;b<bands.length;b++){
+    var bd=bands[b], prev=null;
+    for(var i=0;i<=steps;i++){
+      var sc=0.04+0.94*(i/steps);
+      var a=sc*turns*Math.PI*2+bd.phase;
+      var hw=treeHalfWx(g,sc)*0.9;
+      var depth=Math.cos(a);
+      var x=CX+Math.sin(a)*hw;
+      var y=g.topY+sc*(g.bY-g.topY)+depth*hw*0.10;
+      if(prev && prev.d>-0.05 && depth>-0.05){
+        var vis=Math.min(1,(Math.min(prev.d,depth)+0.05)*2.2);
+        var w=1.2+sc*1.8;
+        tl.globalAlpha=0.85*vis; tl.strokeStyle=bd.base; tl.lineWidth=w;
+        tl.beginPath(); tl.moveTo(prev.x,prev.y); tl.lineTo(x,y); tl.stroke();
+        var lit=0.35+0.65*Math.max(0,-Math.sin(a)*0.6+depth*0.6);
+        tl.globalAlpha=vis*lit; tl.strokeStyle=bd.hi; tl.lineWidth=w*0.38;
+        tl.beginPath(); tl.moveTo(prev.x,prev.y-w*0.25); tl.lineTo(x,y-w*0.25); tl.stroke();
+        if(i%9===0 && depth>0.45){ tl.globalAlpha=vis*0.9; tl.fillStyle=bd.spark; tl.beginPath(); tl.arc(x,y-w*0.2,w*0.55,0,Math.PI*2); tl.fill(); }
+      }
+      prev={ x:x, y:y, d:depth };
+    }
+  }
+  tl.globalAlpha=1; tl.restore();
+}
+// 2) 双击树落雪
+var lastTreeTapAt=0, lastTreeTapX=0, lastTreeTapY=0;
+var treeSnow=[], TREE_SNOW_MAX=10, treeSnowLast=0;
+function triggerTreeSnow(){
+  var g=treeGeom(), n=8+Math.floor(Math.random()*3);
+  for(var i=0;i<n;i++){
+    if(treeSnow.length>=TREE_SNOW_MAX) treeSnow.shift();
+    var sc=0.12+Math.random()*0.78, hw=treeHalfWx(g,sc)*0.85;
+    treeSnow.push({ x:CX+(Math.random()*2-1)*hw, y:g.topY+sc*(g.bY-g.topY), vx:(Math.random()-0.5)*R*0.04, vy:-Math.random()*R*0.05, r:R*(0.010+Math.random()*0.010), rot:Math.random()*6.28, vr:(Math.random()-0.5)*3, delay:Math.random()*0.18 });
+  }
+}
+function drawTreeSnow(now){
+  if(!treeSnow.length){ treeSnowLast=now; return; }
+  var dt=Math.min(0.05,(now-(treeSnowLast||now))/1000); treeSnowLast=now;
+  var bY=H*0.875, grav=H*1.1;
+  for(var i=treeSnow.length-1;i>=0;i--){
+    var p=treeSnow[i];
+    if(p.delay>0){ p.delay-=dt; }
+    else { p.vy+=grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt; }
+    if(p.y>=bY){ treeSnow.splice(i,1); continue; }
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    ctx.fillStyle='rgba(245,250,255,0.95)';
+    ctx.beginPath(); ctx.ellipse(0,0,p.r*1.25,p.r*0.85,0,0,Math.PI*2); ctx.ellipse(p.r*0.7,-p.r*0.2,p.r*0.6,p.r*0.5,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(170,195,225,0.55)';
+    ctx.beginPath(); ctx.ellipse(0,p.r*0.35,p.r*0.9,p.r*0.35,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+// 3) 鼠标雪迹
+var mouseSnow=[], MOUSE_SNOW_MAX=12, msLastX=-1e9, msLastY=-1e9;
+function addMouseSnow(clientX,clientY){
+  if(typeof clientToSceneCoords!=='function') return;
+  var sp=clientToSceneCoords(clientX,clientY); if(!sp) return;
+  var dx=sp.x-CX, dy=sp.y-CY;
+  if(dx*dx+dy*dy>R*R*0.92) return;
+  var mx=sp.x-msLastX, my=sp.y-msLastY;
+  if(mx*mx+my*my<(R*0.035)*(R*0.035)) return;
+  msLastX=sp.x; msLastY=sp.y;
+  if(mouseSnow.length>=MOUSE_SNOW_MAX) mouseSnow.shift();
+  mouseSnow.push({ x:sp.x+(Math.random()-0.5)*R*0.02, y:sp.y+(Math.random()-0.5)*R*0.02, r:R*(0.004+Math.random()*0.005), born:performance.now() });
+}
+function drawMouseSnow(now){
+  if(!mouseSnow.length) return;
+  ctx.save();
+  for(var i=mouseSnow.length-1;i>=0;i--){
+    var p=mouseSnow[i], age=(now-p.born)/1000;
+    if(age>1.0){ mouseSnow.splice(i,1); continue; }
+    var a=age<0.6?1:1-(age-0.6)/0.4;
+    var yy=p.y+age*R*0.012;
+    ctx.globalAlpha=0.9*a; ctx.fillStyle='#ffffff';
+    ctx.beginPath(); ctx.arc(p.x,yy,p.r,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.25*a;
+    ctx.beginPath(); ctx.arc(p.x,yy,p.r*2.2,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1; ctx.restore();
+}
+// 4) 远景麋鹿
+var deer={ active:false, start:0, dur:0, dir:1, next:0 };
+function drawDeer(now){
+  if(!deer.next) deer.next=now+8000;
+  if(!deer.active){ if(now<deer.next) return; deer.active=true; deer.start=now; deer.dur=22000+Math.random()*8000; deer.dir=Math.random()<0.5?1:-1; }
+  var t=(now-deer.start)/deer.dur;
+  if(t>=1){ deer.active=false; deer.next=now+40000+Math.random()*30000; return; }
+  var bY=H*0.875, gy=bY-R*0.06;
+  var x=deer.dir>0? CX-R*0.5+t*R : CX+R*0.5-t*R;
+  var edge=Math.min(1,t/0.12,(1-t)/0.12);
+  var night=(skyState&&skyState.starVis)||0;
+  var alpha=(0.25+0.15*(1-night))*edge;
+  var sz=R*0.028, ph=now*0.006, bob=Math.sin(ph*2)*sz*0.04;
+  ctx.save(); ctx.translate(x,gy+bob); ctx.scale(deer.dir,1); ctx.globalAlpha=alpha;
+  ctx.fillStyle=ctx.strokeStyle=night>0.5?'#1c2536':'#3a4558'; ctx.lineCap='round';
+  ctx.beginPath(); ctx.ellipse(0,-sz*1.1,sz*1.1,sz*0.42,0,0,Math.PI*2); ctx.fill();
+  ctx.lineWidth=sz*0.16;
+  var legs=[[-0.75,0],[-0.55,Math.PI],[0.65,Math.PI],[0.85,0]];
+  for(var i=0;i<4;i++){ var sw=Math.sin(ph+legs[i][1])*sz*0.25; ctx.beginPath(); ctx.moveTo(legs[i][0]*sz,-sz*0.9); ctx.lineTo(legs[i][0]*sz+sw,0); ctx.stroke(); }
+  ctx.lineWidth=sz*0.28;
+  ctx.beginPath(); ctx.moveTo(sz*0.85,-sz*1.2); ctx.lineTo(sz*1.25,-sz*1.85); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(sz*1.42,-sz*1.92,sz*0.3,sz*0.16,0.3,0,Math.PI*2); ctx.fill();
+  ctx.lineWidth=sz*0.08;
+  ctx.beginPath();
+  ctx.moveTo(sz*1.25,-sz*2.0); ctx.lineTo(sz*1.1,-sz*2.55);
+  ctx.moveTo(sz*1.16,-sz*2.3); ctx.lineTo(sz*0.92,-sz*2.45);
+  ctx.moveTo(sz*1.32,-sz*2.0); ctx.lineTo(sz*1.38,-sz*2.5);
+  ctx.moveTo(sz*1.36,-sz*2.3); ctx.lineTo(sz*1.58,-sz*2.42);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(-sz*1.12,-sz*1.25,sz*0.12,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+// 5) 点礼物祝福语（giftSpecs.x=底部中心x, y=底部y）
+var giftTexts=[], GIFT_TEXT_MAX=4;
+var GIFT_WORDS=['圣诞快乐！','Merry Christmas!','心想事成','Ho Ho Ho!'];
+function pushGiftText(gi){
+  var spec=giftSpecs[gi]; if(!spec) return;
+  if(giftTexts.length>=GIFT_TEXT_MAX) giftTexts.shift();
+  giftTexts.push({ x:spec.x, y:spec.y-spec.h-R*0.02, txt:GIFT_WORDS[Math.floor(Math.random()*GIFT_WORDS.length)], born:performance.now() });
+}
+function drawGiftTexts(now){
+  if(!giftTexts.length) return;
+  var D=1800, fs=Math.round(R*0.055);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font='bold '+fs+'px "Microsoft YaHei",sans-serif'; ctx.lineJoin='round';
+  for(var i=giftTexts.length-1;i>=0;i--){
+    var g=giftTexts[i], k=(now-g.born)/D;
+    if(k>=1){ giftTexts.splice(i,1); continue; }
+    var a=k<0.15?k/0.15:(k>0.65?1-(k-0.65)/0.35:1);
+    var y=g.y-k*R*0.16;
+    var sc=0.8+0.2*Math.min(1,k/0.15);
+    ctx.save(); ctx.translate(g.x,y); ctx.scale(sc,sc); ctx.globalAlpha=a;
+    ctx.lineWidth=fs*0.18; ctx.strokeStyle='rgba(90,40,0,0.85)'; ctx.strokeText(g.txt,0,0);
+    var grd=ctx.createLinearGradient(0,-fs/2,0,fs/2);
+    grd.addColorStop(0,'#fff3b0'); grd.addColorStop(0.5,'#ffd24a'); grd.addColorStop(1,'#d99a1a');
+    ctx.fillStyle=grd; ctx.fillText(g.txt,0,0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// 6) 圣诞倒计时
+function initXmasCountdown(){
+  if(document.getElementById('xmas-cd')) return;
+  var el=document.createElement('div');
+  el.id='xmas-cd';
+  el.style.cssText='position:fixed;top:18px;right:18px;z-index:99;background:rgba(0,0,0,.62);color:#ffd966;padding:9px 15px;border-radius:22px;font:600 14px "Microsoft YaHei",sans-serif;pointer-events:none;user-select:none;letter-spacing:.5px;white-space:nowrap;';
+  document.body.appendChild(el);
+  function upd(){
+    var d=new Date();
+    var today=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+    var x=new Date(d.getFullYear(),11,25);
+    if(today.getTime()===x.getTime()){ el.textContent='\uD83C\uDF84 圣诞快乐！'; return; }
+    if(today>x) x=new Date(d.getFullYear()+1,11,25);
+    var days=Math.round((x-today)/86400000);
+    el.textContent='距离圣诞 '+days+' 天';
+  }
+  upd(); setInterval(upd,60000);
+}
+
 // ===== v18 公共（装饰球脉冲/树顶星/企鹅/圣诞袜/球体呼吸/截图）=====
 // 1) 点装饰球脉冲（坐标公式与 drawOrnaments 完全一致）
 var ornPulse=[];
@@ -1657,7 +1828,7 @@ function drawSnowmanFootprints(){
     }
     // v16 树上装饰球（画在 treeLayer 静态层）
     try{ drawOrnaments(tlctx); }catch(e){}
-    try{ drawCandyCanes(tctx); drawIcicles(tctx); }catch(e){}
+    try{ drawCandyCanes(tctx); drawIcicles(tctx); drawTinsel(tctx); }catch(e){}
     // 天使顶
     angel(cx, baseY-treeH*0.98, treeH*0.085);
     renderTreeScene(shakeActive? Math.max(0, performance.now()-shakeStart) : 0, 0);
@@ -3219,6 +3390,8 @@ function drawSnowmanFootprints(){
     if(accum>0.35){ accum=Math.max(0.35,accum-0.0008); if(Math.abs(accum-lastTreeAccum)>0.06) accumChanged=true; }
     if(now-lastRedraw>450 && accumChanged){ accumChanged=false; lastRedraw=now; drawTree(); }
     // v14 特效（aws-quick/smart）
+    drawTreeSnow(now);
+    drawDeer(now);
     drawOrnPulse(now);
     drawAngelFx(now);
     drawSnowmanFootprints();
@@ -3240,6 +3413,8 @@ function drawSnowmanFootprints(){
     drawStockings(now);
     drawBaseBells(now);
     drawSpectrum(now);
+    drawMouseSnow(now);
+    drawGiftTexts(now);
     applyGlobeBreath(now);
     requestAnimationFrame(tick);
   }
@@ -3450,6 +3625,7 @@ function drawSnowmanFootprints(){
     }, 1000);
   });
   window.addEventListener('pointermove', function(e){
+    try{ if(typeof addMouseSnow==='function') addMouseSnow(e.clientX, e.clientY); }catch(_e){}
     var pIdx=findPtrIdx(e.pointerId);
     if(pIdx>=0){
       activePtrs[pIdx].x=e.clientX;
@@ -3508,7 +3684,7 @@ function drawSnowmanFootprints(){
       var gst=giftStates[gi];
       if(gst){
         gst.target=gst.target?0:1;
-        if(gst.target===1) spawnGiftBurst(giftSpecs[gi], gi);
+        if(gst.target===1){ spawnGiftBurst(giftSpecs[gi], gi); pushGiftText(gi); }
       }
       return;
     }
@@ -3528,6 +3704,15 @@ function drawSnowmanFootprints(){
       return;
     }
     if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
+      // v19 双击树落雪（先于装饰球）
+      var _tsp=null; try{ _tsp=clientToSceneCoords(e.clientX, e.clientY); }catch(_e){}
+      var _tNow=performance.now();
+      if(_tsp && hitTestTree(_tsp.x,_tsp.y)){
+        if(_tNow-lastTreeTapAt<DBL_TAP_MS && Math.abs(_tsp.x-lastTreeTapX)<R*0.25 && Math.abs(_tsp.y-lastTreeTapY)<R*0.25){
+          lastTreeTapAt=0; triggerTreeSnow(); clearHold(); clearPending(); return;
+        }
+        lastTreeTapAt=_tNow; lastTreeTapX=_tsp.x; lastTreeTapY=_tsp.y;
+      }
       // v18 点装饰球（先于房子/树脉冲）
       var _osp=null,_oi=-1;
       try{ _osp=clientToSceneCoords(e.clientX, e.clientY); if(_osp) _oi=hitTestOrnament(_osp.x, _osp.y); }catch(_e){}
@@ -3563,6 +3748,7 @@ function drawSnowmanFootprints(){
   // ---------- 底座铭牌切换 ----------
   var plateEl=document.getElementById('plate');
   if(typeof initSnapshotButton==='function') initSnapshotButton();
+  if(typeof initXmasCountdown==='function') initXmasCountdown();
   if(typeof xfxInitViewToggle==='function') xfxInitViewToggle();
 
   // v14 底座长按震动（aws-quick/smart）
