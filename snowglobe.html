@@ -350,6 +350,187 @@ function buildSnowmanFootprints(a){
 
 
 
+
+// ===== v21 公共（圣诞老人/小兔/微摆/提灯/闪光点/蝴蝶结）=====
+function _clamp01(v){ return v<0?0:(v>1?1:v); }
+function _ease(t){ t=_clamp01(t); return t*t*(3-2*t); }
+function _rr(a,b){ return a+Math.random()*(b-a); }
+// 1) 圣诞老人爬烟囱
+var SANTA={ next:0, start:-1, side:1 };
+var SANTA_DUR=5200;
+function _drawSantaFigure(u,look){
+  ctx.fillStyle='#1a1a1a';
+  ctx.fillRect(-u*0.9,-u*0.9,u*0.75,u*0.9); ctx.fillRect(u*0.15,-u*0.9,u*0.75,u*0.9);
+  ctx.fillStyle='#b3121b';
+  ctx.fillRect(-u*0.85,-u*2.0,u*0.65,u*1.15); ctx.fillRect(u*0.2,-u*2.0,u*0.65,u*1.15);
+  var g=ctx.createLinearGradient(-u*1.2,0,u*1.2,0);
+  g.addColorStop(0,'#8e0d14'); g.addColorStop(0.5,'#e0202b'); g.addColorStop(1,'#8e0d14');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,-u*3.0,u*1.2,u*1.25,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#111'; ctx.fillRect(-u*1.15,-u*2.75,u*2.3,u*0.35);
+  ctx.fillStyle='#e8c35a'; ctx.fillRect(-u*0.22,-u*2.8,u*0.44,u*0.45);
+  ctx.save(); ctx.translate(look*u*0.25,0);
+  ctx.fillStyle='#f3c9a8'; ctx.beginPath(); ctx.arc(0,-u*4.55,u*0.62,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ffffff';
+  ctx.beginPath(); ctx.moveTo(-u*0.65,-u*4.45); ctx.quadraticCurveTo(0,-u*3.2,u*0.65,-u*4.45); ctx.quadraticCurveTo(0,-u*4.0,-u*0.65,-u*4.45); ctx.fill();
+  ctx.fillStyle='#222';
+  ctx.fillRect(-u*0.28+look*u*0.12,-u*4.75,u*0.12,u*0.12); ctx.fillRect(u*0.16+look*u*0.12,-u*4.75,u*0.12,u*0.12);
+  ctx.fillStyle='#d01822';
+  ctx.beginPath(); ctx.moveTo(-u*0.7,-u*4.95); ctx.lineTo(u*0.7,-u*4.95); ctx.lineTo(u*0.9,-u*6.1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.fillRect(-u*0.78,-u*5.1,u*1.56,u*0.28);
+  ctx.beginPath(); ctx.arc(u*0.9,-u*6.1,u*0.26,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+function drawSantaChimney(now){
+  if(!chimneys||chimneys.length<2) return;
+  var c=chimneys[1];
+  if(!SANTA.next) SANTA.next=now+_rr(30000,50000);
+  if(SANTA.start<0){ if(now<SANTA.next) return; SANTA.start=now; SANTA.side=Math.random()<0.5?-1:1; }
+  var t=(now-SANTA.start)/1000;
+  if(t*1000>SANTA_DUR){ SANTA.start=-1; SANTA.next=now+_rr(30000,50000); return; }
+  var u=c.s*0.09, climb=u*3.2, d, look=0;
+  if(t<0.4) d=0;
+  else if(t<2.2) d=_ease((t-0.4)/1.8)*climb;
+  else if(t<3.2){ d=climb; look=Math.sin((t-2.2)*Math.PI*2); }
+  else if(t<4.8) d=(1-_ease((t-3.2)/1.6))*climb;
+  else d=0;
+  var a=Math.min(_clamp01(t/0.4),_clamp01((5.2-t)/0.4));
+  ctx.save(); ctx.globalAlpha*=a;
+  ctx.translate(c.x+SANTA.side*c.s*0.06, c.y+u*0.4+d);
+  ctx.rotate(Math.PI+SANTA.side*0.08);
+  _drawSantaFigure(u,look);
+  ctx.restore();
+}
+// 2) 雪地小兔
+var BUNNY={ next:0, hopStart:-1 };
+function drawBunny(now){
+  var bY=_sceneBY(), x=CX+R*0.58, y=bY+R*0.01, u=R*0.045;
+  if(!BUNNY.next) BUNNY.next=now+_rr(3000,7000);
+  if(BUNNY.hopStart<0 && now>=BUNNY.next) BUNNY.hopStart=now;
+  var hop=0, ear=0;
+  if(BUNNY.hopStart>=0){
+    var p=(now-BUNNY.hopStart)/420;
+    if(p>=1){ BUNNY.hopStart=-1; BUNNY.next=now+_rr(4000,9000); }
+    else { hop=Math.sin(p*Math.PI)*u*0.9; ear=Math.sin(p*Math.PI*4)*0.25*(1-p); }
+  }
+  ear+=Math.sin(now*0.002)*0.04;
+  ctx.fillStyle='rgba(120,140,170,'+(0.25-hop/u*0.12)+')';
+  ctx.beginPath(); ctx.ellipse(x,y+u*0.05,u*1.0,u*0.22,0,0,Math.PI*2); ctx.fill();
+  ctx.save(); ctx.translate(x,y-hop);
+  var sq=hop>0?1.06:1; ctx.scale(1/sq,sq);
+  ctx.fillStyle='#f7f9fc';
+  ctx.beginPath(); ctx.ellipse(0,-u*0.7,u*0.95,u*0.75,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(u*0.95,-u*0.6,u*0.22,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-u*0.75,-u*1.35,u*0.52,0,Math.PI*2); ctx.fill();
+  for(var i=0;i<2;i++){
+    ctx.save(); ctx.translate(-u*0.85+i*u*0.32,-u*1.75); ctx.rotate(-0.25+i*0.3+(i?ear:-ear));
+    ctx.fillStyle='#f7f9fc'; ctx.beginPath(); ctx.ellipse(0,-u*0.55,u*0.16,u*0.6,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f6c1cf'; ctx.beginPath(); ctx.ellipse(0,-u*0.55,u*0.07,u*0.42,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle='#2a1a22'; ctx.beginPath(); ctx.arc(-u*0.92,-u*1.42,u*0.08,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ff8fab'; ctx.beginPath(); ctx.arc(-u*1.22,-u*1.28,u*0.07,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+// 3) 球体自动微摆（独立 style.rotate，不覆盖 translateX/scale）
+var SWAY={ next:0, start:-1, dir:1, el:null };
+function applyIdleSway(now){
+  if(!SWAY.el) SWAY.el=document.querySelector('.ball');
+  var el=SWAY.el; if(!el) return;
+  if(!SWAY.next) SWAY.next=now+_rr(20000,28000);
+  if(typeof globe!=='undefined' && globe && globe.classList.contains('shaking')){
+    if(SWAY.start>=0){ SWAY.start=-1; el.style.rotate=''; }
+    SWAY.next=now+_rr(20000,28000); return;
+  }
+  if(SWAY.start<0){ if(now<SWAY.next) return; SWAY.start=now; SWAY.dir=Math.random()<0.5?-1:1; }
+  var p=(now-SWAY.start)/1200;
+  if(p>=1){ el.style.rotate=''; SWAY.start=-1; SWAY.next=now+_rr(20000,28000); return; }
+  var ang=1.5*SWAY.dir*Math.sin(p*Math.PI*3)*Math.exp(-p*3.2);
+  el.style.rotate=ang.toFixed(3)+'deg';
+}
+// 4) 门口提灯
+var LANTERN_SIDE=[1,-1];
+function drawDoorLanterns(now){
+  if(!houseSpecs||!houseSpecs.length) return;
+  var night=skyState?_clamp01(skyState.starVis):0.5;
+  for(var i=0;i<houseSpecs.length&&i<2;i++){
+    var h=houseSpecs[i], s2=h.s;
+    var hx=h.x+LANTERN_SIDE[i]*s2*0.5, hy=h.y-s2*0.35, u=s2*0.06;
+    var swing=Math.sin(now*0.0016+i*1.7)*0.12;
+    var flick=0.85+0.15*Math.sin(now*0.011+i*3)*Math.sin(now*0.0047+i);
+    var lum=(0.35+0.65*night)*flick;
+    ctx.save(); ctx.translate(hx,hy); ctx.rotate(swing);
+    var gy=u*2.2, gl=ctx.createRadialGradient(0,gy,0,0,gy,u*6);
+    gl.addColorStop(0,'rgba(255,200,90,'+(0.45*lum)+')'); gl.addColorStop(1,'rgba(255,170,60,0)');
+    ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(0,gy,u*6,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#3a3430'; ctx.lineWidth=Math.max(1,u*0.18);
+    ctx.beginPath(); ctx.arc(0,0,u*0.35,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,u*0.35); ctx.lineTo(0,u*0.9); ctx.stroke();
+    ctx.fillStyle='#2d2a28'; ctx.beginPath(); ctx.moveTo(-u,u*1.4); ctx.lineTo(u,u*1.4); ctx.lineTo(0,u*0.8); ctx.closePath(); ctx.fill();
+    var gg=ctx.createLinearGradient(0,u*1.4,0,u*3.0);
+    gg.addColorStop(0,'rgba(255,236,170,'+(0.55+0.45*lum)+')'); gg.addColorStop(1,'rgba(255,160,50,'+(0.5+0.5*lum)+')');
+    ctx.fillStyle=gg; ctx.fillRect(-u*0.72,u*1.4,u*1.44,u*1.6);
+    ctx.strokeStyle='#2d2a28'; ctx.lineWidth=Math.max(1,u*0.14);
+    ctx.strokeRect(-u*0.72,u*1.4,u*1.44,u*1.6);
+    ctx.beginPath(); ctx.moveTo(0,u*1.4); ctx.lineTo(0,u*3.0); ctx.stroke();
+    ctx.fillStyle='#2d2a28'; ctx.fillRect(-u*0.85,u*3.0,u*1.7,u*0.3);
+    ctx.restore();
+  }
+}
+// 5) 雪地闪光点
+var SPARKLES=(function(){
+  var seed=20261225, arr=[], i;
+  function rnd(){ seed=(seed*1103515245+12345)%2147483648; return seed/2147483648; }
+  for(i=0;i<10;i++){ arr.push({ fx:rnd()*1.5-0.75, fy:rnd()*0.2-0.1, ph:rnd()*6.283, sp:0.6+rnd()*1.2, sz:0.5+rnd()*0.6 }); }
+  return arr;
+})();
+function drawSnowSparkles(now){
+  var bY=_sceneBY(), t=now*0.001, i, sp, x, y, a, r, dx, dy;
+  for(i=0;i<SPARKLES.length;i++){
+    sp=SPARKLES[i]; x=CX+sp.fx*R; y=bY+sp.fy*R;
+    dx=x-CX; dy=y-CY; if(dx*dx+dy*dy>R*R*0.92) continue;
+    a=Math.pow(Math.max(0,Math.sin(t*sp.sp+sp.ph)),14); if(a<0.03) continue;
+    r=R*0.012*sp.sz*(0.6+a);
+    ctx.save(); ctx.globalAlpha*=a;
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=Math.max(0.6,r*0.18);
+    ctx.beginPath(); ctx.moveTo(x-r,y); ctx.lineTo(x+r,y); ctx.moveTo(x,y-r); ctx.lineTo(x,y+r); ctx.stroke();
+    ctx.fillStyle='rgba(220,240,255,1)'; ctx.beginPath(); ctx.arc(x,y,r*0.22,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+// 6) 树顶蝴蝶结
+function _bowLoop(u,dir){
+  ctx.beginPath(); ctx.moveTo(0,0);
+  ctx.bezierCurveTo(dir*u*1.2,-u*1.3,dir*u*2.6,-u*0.9,dir*u*2.4,0);
+  ctx.bezierCurveTo(dir*u*2.6,u*0.9,dir*u*1.2,u*1.3,0,0);
+  ctx.closePath();
+}
+function drawTopBow(now){
+  var x=CX, y=_sceneBY()-_sceneTH()*0.90, u=R*0.028;
+  var wind=Math.sin(now*0.0011)*0.06+Math.sin(now*0.0029)*0.025+(typeof musicEnergy==='number'?musicEnergy*0.04:0);
+  ctx.save(); ctx.translate(x,y); ctx.rotate(wind);
+  var tw=now*0.003, k, side;
+  for(k=0;k<2;k++){
+    side=k?1:-1; ctx.fillStyle=k?'#a50f19':'#b8141f';
+    ctx.beginPath(); ctx.moveTo(side*u*0.2,u*0.2);
+    ctx.quadraticCurveTo(side*(u*0.9+Math.sin(tw+k)*u*0.3),u*1.8,side*u*0.7,u*3.2);
+    ctx.lineTo(side*u*1.2,u*3.0); ctx.lineTo(side*u*1.3,u*3.5);
+    ctx.quadraticCurveTo(side*(u*1.5+Math.sin(tw+k)*u*0.3),u*1.8,side*u*0.6,u*0.1);
+    ctx.closePath(); ctx.fill();
+  }
+  for(k=0;k<2;k++){
+    side=k?1:-1;
+    var g=ctx.createLinearGradient(0,-u*1.2,0,u*1.2);
+    g.addColorStop(0,'#ff4a55'); g.addColorStop(0.55,'#d0141f'); g.addColorStop(1,'#7d0a12');
+    ctx.fillStyle=g; _bowLoop(u,side); ctx.fill();
+    ctx.strokeStyle='rgba(255,190,190,0.55)'; ctx.lineWidth=Math.max(1,u*0.12);
+    ctx.beginPath(); ctx.moveTo(side*u*0.8,-u*0.6); ctx.quadraticCurveTo(side*u*1.7,-u*0.95,side*u*2.2,-u*0.35); ctx.stroke();
+  }
+  var kg=ctx.createRadialGradient(-u*0.15,-u*0.2,0,0,0,u*0.6);
+  kg.addColorStop(0,'#ff6b74'); kg.addColorStop(1,'#9e0d16');
+  ctx.fillStyle=kg; ctx.beginPath(); ctx.ellipse(0,0,u*0.5,u*0.6,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
 // ===== v20 公共（涟漪/铃铛/礼物玩具/许愿/小猫/雪堆）=====
 var RIPPLES=[], RIPPLE_MAX=2;
 var BELL_RINGS=[], bellRingAt=[-1e9,-1e9], bellPendingPtrId=null, bellPendingIdx=-1;
@@ -3606,9 +3787,13 @@ function drawSnowmanFootprints(){
     drawOrnPulse(now);
     drawAngelFx(now);
     drawSnowmanFootprints();
+    drawSnowSparkles(now);
     drawSnowPiles(now);
     drawCat(now);
+    drawBunny(now);
     drawPenguin(now);
+    drawDoorLanterns(now);
+    if(chimneys && chimneys.length>1) drawSantaChimney(now);
     drawSnowmanBubble(now);
     drawRainDrops(now);
     // v15 特效
@@ -3622,6 +3807,7 @@ function drawSnowmanFootprints(){
     drawSnowmanBreath(now);
     drawBird(now);
     drawNorthStar(now);
+    drawTopBow(now);
     drawTopStar(now);
     drawWishStars(now);
     drawStockings(now);
@@ -3633,6 +3819,7 @@ function drawSnowmanFootprints(){
     drawRipples(now);
     drawGiftTexts(now);
     applyGlobeBreath(now);
+    applyIdleSway(now);
     requestAnimationFrame(tick);
   }
   var accumChanged=false;
