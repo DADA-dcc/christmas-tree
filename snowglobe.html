@@ -349,6 +349,216 @@ function buildSnowmanFootprints(a){
 
 
 
+
+// ===== v20 公共（涟漪/铃铛/礼物玩具/许愿/小猫/雪堆）=====
+var RIPPLES=[], RIPPLE_MAX=2;
+var BELL_RINGS=[], bellRingAt=[-1e9,-1e9], bellPendingPtrId=null, bellPendingIdx=-1;
+var GIFT_TOYS=[], TOY_MAX=1;
+var WISH_STARS=[], WISH_MAX=5, wishAt=-1e9;
+function _sceneBY(){ return H*0.875; }
+function _sceneTH(){ return H*0.60; }
+function _star5(c,x,y,r,rot){
+  c.beginPath();
+  for(var i=0;i<10;i++){ var a=rot+i*Math.PI/5-Math.PI/2, rr=(i%2)?r*0.45:r; if(i===0)c.moveTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr); else c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr); }
+  c.closePath();
+}
+// 1) 单击涟漪
+function spawnRipple(pt){
+  if(!pt) return;
+  if(RIPPLES.length>=RIPPLE_MAX) RIPPLES.shift();
+  RIPPLES.push({ x:pt.x, y:pt.y, t0:performance.now() });
+}
+function drawRipples(now){
+  if(!RIPPLES.length) return;
+  var DUR=900, maxR=R*0.22;
+  ctx.save(); ctx.lineCap='round';
+  for(var i=RIPPLES.length-1;i>=0;i--){
+    var rp=RIPPLES[i], p=(now-rp.t0)/DUR;
+    if(p>=1){ RIPPLES.splice(i,1); continue; }
+    for(var k=0;k<2;k++){
+      var q=p-k*0.22; if(q<=0) continue;
+      var e=1-Math.pow(1-q,3), a=(1-q)*(k?0.35:0.55);
+      ctx.strokeStyle='rgba(200,225,255,'+a.toFixed(3)+')';
+      ctx.lineWidth=Math.max(0.6,R*0.008*(1-q));
+      ctx.beginPath(); ctx.ellipse(rp.x,rp.y,maxR*e,maxR*e*0.85,0,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+// 2) 点铃铛
+function hitTestBells(px,py){
+  var by=H*0.855, hr=R*0.09;
+  for(var i=0;i<2;i++){ var bx=CX+(i?1:-1)*R*0.55, dx=px-bx, dy=py-by; if(dx*dx+dy*dy<=hr*hr) return i; }
+  return -1;
+}
+function triggerBellRing(idx){
+  if(idx<0||idx>1) return;
+  var t=performance.now(); bellRingAt[idx]=t;
+  for(var i=BELL_RINGS.length-1;i>=0;i--) if(BELL_RINGS[i].idx===idx) BELL_RINGS.splice(i,1);
+  BELL_RINGS.push({ idx:idx, t0:t });
+}
+function bellAmpMul(idx,now){
+  var p=(now-bellRingAt[idx])/600;
+  if(p<0||p>=1) return 1;
+  return 1+2.2*(1-p)*(1-p);
+}
+function drawBellRings(now){
+  if(!BELL_RINGS.length) return;
+  var DUR=900, by=H*0.855, sz=R*0.055;
+  ctx.save();
+  for(var i=BELL_RINGS.length-1;i>=0;i--){
+    var b=BELL_RINGS[i], p=(now-b.t0)/DUR;
+    if(p>=1){ BELL_RINGS.splice(i,1); continue; }
+    var bx=CX+(b.idx?1:-1)*R*0.55;
+    for(var k=0;k<3;k++){
+      var q=p-k*0.18; if(q<=0||q>=1) continue;
+      var rr=sz*(0.8+q*3.2), a=(1-q)*0.6;
+      ctx.strokeStyle='rgba(255,214,110,'+a.toFixed(3)+')';
+      ctx.lineWidth=Math.max(0.6,sz*0.12*(1-q));
+      ctx.beginPath(); ctx.arc(bx,by+sz*0.4,rr,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+// 3) 礼物飞小玩具
+function spawnGiftToy(gi){
+  var g=giftSpecs[gi]; if(!g) return;
+  if(GIFT_TOYS.length>=TOY_MAX) GIFT_TOYS.shift();
+  var dir=Math.random()<0.5?-1:1;
+  GIFT_TOYS.push({ x0:g.x, y0:g.y-g.h, t0:performance.now(), vx:dir*R*(0.18+Math.random()*0.12), vy:-R*0.85, spin:dir*(14+Math.random()*6), kind:Math.random()<0.55?0:1, c1:g.c1||'#e33', c2:g.c2||'#fd4', sz:Math.max(g.w*0.22,R*0.025) });
+}
+function drawGiftToys(now){
+  if(!GIFT_TOYS.length) return;
+  var DUR=1200, G=R*1.6;
+  for(var i=GIFT_TOYS.length-1;i>=0;i--){
+    var t=GIFT_TOYS[i], s2=(now-t.t0)/1000, p=s2*1000/DUR;
+    if(p>=1){ GIFT_TOYS.splice(i,1); continue; }
+    var x=t.x0+t.vx*s2, y=t.y0+t.vy*s2+0.5*G*s2*s2;
+    var a=p<0.7?1:(1-p)/0.3, sc=0.6+Math.min(p*4,1)*0.4;
+    ctx.save(); ctx.globalAlpha=a; ctx.translate(x,y); ctx.rotate(t.spin*s2); ctx.scale(sc,sc);
+    var z=t.sz;
+    if(t.kind===0){
+      ctx.fillStyle=t.c1; ctx.beginPath(); ctx.moveTo(-z,-z*0.3); ctx.lineTo(z,-z*0.3); ctx.lineTo(0,z*1.1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle=t.c2; ctx.beginPath(); ctx.moveTo(-z*0.66,z*0.2); ctx.lineTo(z*0.66,z*0.2); ctx.lineTo(z*0.4,z*0.45); ctx.lineTo(-z*0.4,z*0.45); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(-z*0.35,-z*0.05,z*0.12,0,Math.PI*2); ctx.arc(z*0.35,-z*0.05,z*0.12,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#7a4a22'; ctx.fillRect(-z*0.08,-z*0.75,z*0.16,z*0.45);
+    } else {
+      ctx.fillStyle='#ffd94a'; _star5(ctx,0,0,z,0); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.7)'; _star5(ctx,-z*0.1,-z*0.1,z*0.4,0); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+// 4) 点树顶星许愿
+function hitTestTopStar(px,py){
+  var tH=_sceneTH(), sy=_sceneBY()-tH*1.02, hr=tH*0.08;
+  var dx=px-CX, dy=py-sy;
+  return dx*dx+dy*dy<=hr*hr;
+}
+function triggerWish(){
+  var t=performance.now(), tH=_sceneTH(), sy=_sceneBY()-tH*1.02;
+  wishAt=t; WISH_STARS.length=0;
+  var n=3+Math.floor(Math.random()*3);
+  for(var i=0;i<n&&i<WISH_MAX;i++){
+    WISH_STARS.push({ x0:CX, y0:sy, t0:t+i*90, vx:(Math.random()-0.5)*R*0.25, vy:-R*(0.35+Math.random()*0.2), sz:tH*(0.014+Math.random()*0.01), ph:Math.random()*6.28 });
+  }
+}
+function wishStarScale(now){
+  var p=(now-wishAt)/500;
+  return (p<0||p>=1)?1:1+0.6*Math.sin(p*Math.PI);
+}
+function drawWishStars(now){
+  var tH=_sceneTH(), sy=_sceneBY()-tH*1.02, fp=(now-wishAt)/500;
+  if(fp>=0&&fp<1){
+    var fr=tH*0.045*(1.5+2.5*fp), g=ctx.createRadialGradient(CX,sy,0,CX,sy,fr);
+    g.addColorStop(0,'rgba(255,250,210,'+(0.85*(1-fp)).toFixed(3)+')');
+    g.addColorStop(1,'rgba(255,220,120,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(CX,sy,fr,0,Math.PI*2); ctx.fill();
+  }
+  if(!WISH_STARS.length) return;
+  var DUR=1500;
+  ctx.save();
+  for(var i=WISH_STARS.length-1;i>=0;i--){
+    var w=WISH_STARS[i], s2=(now-w.t0)/1000, p=s2*1000/DUR;
+    if(p<0) continue;
+    if(p>=1){ WISH_STARS.splice(i,1); continue; }
+    var x=w.x0+w.vx*s2+Math.sin(w.ph+s2*5)*R*0.015, y=w.y0+w.vy*s2;
+    ctx.globalAlpha=(1-p)*(0.75+0.25*Math.sin(now*0.02+w.ph));
+    ctx.fillStyle='#fff3b0';
+    _star5(ctx,x,y,w.sz*(1-p*0.4),s2*3); ctx.fill();
+  }
+  ctx.restore();
+}
+// 5) 雪地小猫
+var catBlinkAt=0, catEarAt=0, catTailAt=0;
+function drawCat(now){
+  var bY=_sceneBY(), sz=R*0.05, x=CX-R*0.60, y=bY+R*0.01;
+  if(now>catBlinkAt+3200+Math.random()*2500) catBlinkAt=now;
+  if(now>catEarAt+4500+Math.random()*4000) catEarAt=now;
+  if(now>catTailAt+2600+Math.random()*3000) catTailAt=now;
+  var blink=(now-catBlinkAt)<140;
+  var earP=(now-catEarAt)/260, ear=(earP>=0&&earP<1)?Math.sin(earP*Math.PI)*0.35:0;
+  var tp=(now-catTailAt)/700, flick=(tp>=0&&tp<1)?Math.sin(tp*Math.PI*2)*0.6*(1-tp):0;
+  var tailA=Math.sin(now*0.0015)*0.15+flick;
+  var body='#4a3a33', dark='#2e2420';
+  ctx.save();
+  ctx.fillStyle='rgba(40,50,80,0.25)';
+  ctx.beginPath(); ctx.ellipse(x,y+sz*0.05,sz*1.1,sz*0.22,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=body; ctx.lineWidth=sz*0.22; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x+sz*0.55,y-sz*0.15); ctx.quadraticCurveTo(x+sz*(1.3+tailA*0.3),y-sz*0.2,x+sz*(1.15+tailA),y-sz*(0.95-Math.abs(tailA)*0.3)); ctx.stroke();
+  ctx.fillStyle=body;
+  ctx.beginPath(); ctx.ellipse(x,y-sz*0.5,sz*0.62,sz*0.55,0,0,Math.PI*2); ctx.fill();
+  var hx=x-sz*0.1, hy=y-sz*1.15;
+  ctx.beginPath(); ctx.arc(hx,hy,sz*0.42,0,Math.PI*2); ctx.fill();
+  for(var k=-1;k<=1;k+=2){
+    var ea=k<0?ear:0;
+    ctx.save(); ctx.translate(hx+k*sz*0.24,hy-sz*0.28); ctx.rotate(k*0.15-ea);
+    ctx.fillStyle=body; ctx.beginPath(); ctx.moveTo(-sz*0.14,sz*0.05); ctx.lineTo(0,-sz*0.3); ctx.lineTo(sz*0.14,sz*0.05); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#c98a8a'; ctx.beginPath(); ctx.moveTo(-sz*0.06,sz*0.02); ctx.lineTo(0,-sz*0.17); ctx.lineTo(sz*0.06,sz*0.02); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle='rgba(255,255,255,0.16)';
+  ctx.beginPath(); ctx.ellipse(x-sz*0.1,y-sz*0.95,sz*0.35,sz*0.1,0,0,Math.PI*2); ctx.fill();
+  if(blink){
+    ctx.strokeStyle=dark; ctx.lineWidth=sz*0.06;
+    ctx.beginPath(); ctx.moveTo(hx-sz*0.24,hy-sz*0.02); ctx.lineTo(hx-sz*0.08,hy-sz*0.02); ctx.moveTo(hx+sz*0.08,hy-sz*0.02); ctx.lineTo(hx+sz*0.24,hy-sz*0.02); ctx.stroke();
+  } else {
+    ctx.fillStyle='#d8e86a';
+    ctx.beginPath(); ctx.ellipse(hx-sz*0.16,hy-sz*0.02,sz*0.08,sz*0.1,0,0,Math.PI*2); ctx.ellipse(hx+sz*0.16,hy-sz*0.02,sz*0.08,sz*0.1,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.fillRect(hx-sz*0.18,hy-sz*0.1,sz*0.04,sz*0.16); ctx.fillRect(hx+sz*0.14,hy-sz*0.1,sz*0.04,sz*0.16);
+  }
+  ctx.fillStyle='#e8a0a0';
+  ctx.beginPath(); ctx.moveTo(hx-sz*0.05,hy+sz*0.1); ctx.lineTo(hx+sz*0.05,hy+sz*0.1); ctx.lineTo(hx,hy+sz*0.16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(240,240,240,0.7)'; ctx.lineWidth=Math.max(0.5,sz*0.025);
+  ctx.beginPath();
+  for(var w2=-1;w2<=1;w2+=2){
+    ctx.moveTo(hx+w2*sz*0.1,hy+sz*0.14); ctx.lineTo(hx+w2*sz*0.55,hy+sz*0.08);
+    ctx.moveTo(hx+w2*sz*0.1,hy+sz*0.18); ctx.lineTo(hx+w2*sz*0.55,hy+sz*0.22);
+  }
+  ctx.stroke(); ctx.restore();
+}
+// 6) 雪堆积累
+function drawSnowPiles(now){
+  var bY=_sceneBY(), a=Math.max(0.35,Math.min(1,accum));
+  var hMul=0.4+(a-0.35)/0.65*0.9;
+  for(var k=-1;k<=1;k+=2){
+    var cx=CX+k*R*0.72, w=R*0.28, h=R*0.07*hMul;
+    var top=bY+R*0.02-h, base=bY+R*0.14;
+    var g=ctx.createLinearGradient(0,top,0,base);
+    g.addColorStop(0,'#f4f8ff'); g.addColorStop(0.45,'#d6e2f0'); g.addColorStop(1,'#9fb0c8');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.moveTo(cx-w,base);
+    ctx.bezierCurveTo(cx-w*0.85,top+h*0.5,cx-w*0.45,top-h*0.15,cx-w*0.05,top+h*0.1);
+    ctx.bezierCurveTo(cx+w*0.25,top-h*0.25,cx+w*0.8,top+h*0.4,cx+w,base);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,'+(0.45+0.25*a).toFixed(3)+')'; ctx.lineWidth=Math.max(1,R*0.008); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(cx-w*0.6,top+h*0.35); ctx.quadraticCurveTo(cx-w*0.3,top-h*0.05,cx,top+h*0.12); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,'+(0.5+0.4*Math.sin(now*0.003+k)).toFixed(3)+')';
+    ctx.fillRect(cx+k*w*0.2,top+h*0.3,R*0.006,R*0.006);
+  }
+}
+
 // ===== v19 公共（彩带/落雪/鼠标雪迹/麋鹿/祝福语/倒计时）=====
 function treeGeom(){ var bY=H*0.875, tH=H*0.60; return { bY:bY, tH:tH, topY:bY-tH*0.98 }; }
 function treeHalfWx(g,s){ return g.tH*(0.06+0.36*s); }
@@ -865,7 +1075,8 @@ function drawBaseBells(now){
   var shaking=shakeActive, flash=shaking?Math.max(0,1-(now-shakeStart)/500):0;
   var amp=shaking?0.45:0.08, sz=R*0.055, py=bellTopY();
   [-1,1].forEach(function(side,i){
-    var px=CX+side*R*0.55, ang=Math.sin(now/(shaking?120:900)+i*1.3)*amp;
+    var ampI=amp*(typeof bellAmpMul==="function"?bellAmpMul(i,now):1);
+    var px=CX+side*R*0.55, ang=Math.sin(now/(shaking?120:900)+i*1.3)*ampI;
     ctx.save(); ctx.translate(px,py); ctx.rotate(ang);
     ctx.strokeStyle='#b8892a'; ctx.lineWidth=sz*0.12;
     ctx.beginPath(); ctx.arc(0,sz*0.1,sz*0.18,0,6.283); ctx.stroke();
@@ -3395,6 +3606,8 @@ function drawSnowmanFootprints(){
     drawOrnPulse(now);
     drawAngelFx(now);
     drawSnowmanFootprints();
+    drawSnowPiles(now);
+    drawCat(now);
     drawPenguin(now);
     drawSnowmanBubble(now);
     drawRainDrops(now);
@@ -3410,10 +3623,14 @@ function drawSnowmanFootprints(){
     drawBird(now);
     drawNorthStar(now);
     drawTopStar(now);
+    drawWishStars(now);
     drawStockings(now);
     drawBaseBells(now);
+    drawBellRings(now);
     drawSpectrum(now);
     drawMouseSnow(now);
+    drawGiftToys(now);
+    drawRipples(now);
     drawGiftTexts(now);
     applyGlobeBreath(now);
     requestAnimationFrame(tick);
@@ -3581,6 +3798,11 @@ function drawSnowmanFootprints(){
     unlockMusic();
     wasPinchGesture=false; isPinching=false; isDraggingTilt=false; holdFired=false;
     dragPtrId=e.pointerId; dragStartX=e.clientX; dragStartY=e.clientY;
+    // v20 点铃铛（先于礼物）
+    var _bpv=null, _bhit=false;
+    try{ _bpv=clientToSceneCoords(e.clientX, e.clientY); }catch(_e){}
+    if(_bpv){ var _bi=hitTestBells(_bpv.x,_bpv.y); if(_bi>=0){ bellPendingPtrId=e.pointerId; bellPendingIdx=_bi; _bhit=true; } }
+    if(_bhit) return;
     var hitGi=hitTestGift(e.clientX, e.clientY);
     if(hitGi>=0){
       if(skyTapTimer){ clearTimeout(skyTapTimer); skyTapTimer=null; }
@@ -3678,13 +3900,19 @@ function drawSnowmanFootprints(){
       }
       return;
     }
+    if(bellPendingPtrId!==null && e.pointerId===bellPendingPtrId){
+      triggerBellRing(bellPendingIdx);
+      bellPendingPtrId=null; bellPendingIdx=-1;
+      clearHold(); clearPending();
+      return;
+    }
     if(giftPendingPtrId!==null && e.pointerId===giftPendingPtrId){
       var gi=giftPendingIdx;
       clearHold(); clearPending();
       var gst=giftStates[gi];
       if(gst){
         gst.target=gst.target?0:1;
-        if(gst.target===1){ spawnGiftBurst(giftSpecs[gi], gi); pushGiftText(gi); }
+        if(gst.target===1){ spawnGiftBurst(giftSpecs[gi], gi); pushGiftText(gi); spawnGiftToy(gi); }
       }
       return;
     }
@@ -3704,6 +3932,9 @@ function drawSnowmanFootprints(){
       return;
     }
     if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
+      // v20 点树顶星许愿（最优先）
+      var _wsp=null; try{ _wsp=clientToSceneCoords(e.clientX, e.clientY); }catch(_e){}
+      if(_wsp && hitTestTopStar(_wsp.x, _wsp.y)){ triggerWish(); clearHold(); clearPending(); return; }
       // v19 双击树落雪（先于装饰球）
       var _tsp=null; try{ _tsp=clientToSceneCoords(e.clientX, e.clientY); }catch(_e){}
       var _tNow=performance.now();
@@ -3731,6 +3962,7 @@ function drawSnowmanFootprints(){
         skyDblCandidate=false; lastSkyTapAt=0;
         spawnFirework(skyEndPt);
       } else if(skyEndPt){
+      spawnRipple(skyEndPt);
         lastSkyTapAt=performance.now(); lastSkyTapX=e.clientX; lastSkyTapY=e.clientY;
         if(skyTapTimer) clearTimeout(skyTapTimer);
         skyTapTimer=setTimeout(function(){ skyTapTimer=null; shake(); }, DBL_TAP_MS);
