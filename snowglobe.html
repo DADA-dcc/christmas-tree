@@ -347,6 +347,224 @@ function buildSnowmanFootprints(a){
 
 
 
+
+// ===== v18 公共（装饰球脉冲/树顶星/企鹅/圣诞袜/球体呼吸/截图）=====
+// 1) 点装饰球脉冲（坐标公式与 drawOrnaments 完全一致）
+var ornPulse=[];
+function ornRand2(n){ var x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+function ornLayout(){
+  var bY=H*0.875, tH=H*0.60;
+  var k=Math.max(0,Math.min(1,(accum-0.35)/0.65));
+  var n=12+Math.round(k*4), list=[];
+  var topY=bY-tH*0.92, botY=bY-tH*0.10;
+  for(var i=0;i<n;i++){
+    var f=0.12+0.86*((i+0.5)/16);
+    var y=topY+(botY-topY)*f+tH*0.025;
+    var halfW=tH*0.36*f, side=(i%2?1:-1);
+    var x=CX+side*halfW*(0.55+ornRand2(i)*0.38);
+    var r=tH*(0.011+ornRand2(i+9)*0.006);
+    list.push({x:x,y:y,r:r});
+  }
+  return list;
+}
+function hitTestOrnament(px,py){
+  var L=ornLayout(), best=-1, bd=1e9;
+  for(var i=0;i<L.length;i++){
+    var dx=px-L[i].x, dy=py-L[i].y, d=Math.sqrt(dx*dx+dy*dy);
+    if(d<=L[i].r+7 && d<bd){ bd=d; best=i; }
+  }
+  return best;
+}
+function triggerOrnament(i,now){ ornPulse[i]=now; }
+function drawOrnPulse(now){
+  var L=null;
+  for(var i=0;i<ornPulse.length;i++){
+    if(!ornPulse[i]) continue;
+    var p=(now-ornPulse[i])/500;
+    if(p>=1||p<0){ ornPulse[i]=0; continue; }
+    if(!L) L=ornLayout();
+    var o=L[i]; if(!o) continue;
+    var lift=Math.sin(p*Math.PI)*o.r*1.2;
+    var sc=1+Math.sin(p*Math.PI)*0.45;
+    var x=o.x, y=o.y-lift, r=o.r*sc;
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    var rr=o.r*(1.5+p*4.5);
+    ctx.globalAlpha=(1-p)*0.8;
+    ctx.strokeStyle='rgba(255,210,90,1)';
+    ctx.lineWidth=Math.max(1,o.r*0.35*(1-p));
+    ctx.beginPath(); ctx.arc(x,y,rr,0,Math.PI*2); ctx.stroke();
+    var g=ctx.createRadialGradient(x,y,0,x,y,r*3.2);
+    g.addColorStop(0,'rgba(255,240,170,'+(0.9*(1-p))+')');
+    g.addColorStop(0.4,'rgba(255,190,60,'+(0.45*(1-p))+')');
+    g.addColorStop(1,'rgba(255,170,40,0)');
+    ctx.globalAlpha=1; ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(x,y,r*3.2,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    var b=ctx.createRadialGradient(x-r*0.35,y-r*0.35,r*0.1,x,y,r);
+    b.addColorStop(0,'#fffbe0'); b.addColorStop(0.5,'#ffd24a'); b.addColorStop(1,'#b07810');
+    ctx.fillStyle=b; ctx.globalAlpha=Math.sin(p*Math.PI);
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+// 2) 树顶变色星
+function drawTopStar(now){
+  var bY=H*0.875, tH=H*0.60;
+  var x=CX, y=bY-tH*1.02, t=now/1000;
+  var cols=[[140,120,255],[255,205,70],[255,130,190]];
+  var ph=(t/8)%1*3, a=Math.floor(ph)%3, b=(a+1)%3, f=ph-Math.floor(ph);
+  f=f*f*(3-2*f);
+  var cr=Math.round(cols[a][0]+(cols[b][0]-cols[a][0])*f),
+      cg=Math.round(cols[a][1]+(cols[b][1]-cols[a][1])*f),
+      cb=Math.round(cols[a][2]+(cols[b][2]-cols[a][2])*f);
+  var night=(skyState&&skyState.starVis!=null)?skyState.starVis:0.5;
+  var breath=0.75+0.25*Math.sin(t*2.2);
+  var size=tH*0.045*(0.95+0.08*Math.sin(t*2.2));
+  var bright=(0.55+0.45*night)*breath;
+  ctx.save(); ctx.translate(x,y); ctx.globalCompositeOperation='lighter';
+  var g=ctx.createRadialGradient(0,0,0,0,0,size*3.5);
+  g.addColorStop(0,'rgba('+cr+','+cg+','+cb+','+(0.6*bright)+')');
+  g.addColorStop(1,'rgba('+cr+','+cg+','+cb+',0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,size*3.5,0,Math.PI*2); ctx.fill();
+  ctx.rotate(t*0.35);
+  ctx.beginPath();
+  for(var i=0;i<10;i++){ var ang=-Math.PI/2+i*Math.PI/5, rr=(i%2)?size*0.42:size; ctx[i?'lineTo':'moveTo'](Math.cos(ang)*rr,Math.sin(ang)*rr); }
+  ctx.closePath();
+  ctx.globalCompositeOperation='source-over';
+  ctx.globalAlpha=Math.min(1,0.7+0.3*bright);
+  var sg=ctx.createRadialGradient(0,0,0,0,0,size);
+  sg.addColorStop(0,'#ffffff');
+  sg.addColorStop(0.5,'rgb('+cr+','+cg+','+cb+')');
+  sg.addColorStop(1,'rgb('+(cr*0.6|0)+','+(cg*0.6|0)+','+(cb*0.6|0)+')');
+  ctx.fillStyle=sg; ctx.fill();
+  ctx.restore();
+}
+// 3) 小企鹅
+var penguin={active:false,start:0,dur:9000,dir:1,next:0};
+function drawPenguin(now){
+  var P=penguin;
+  if(!P.next) P.next=now+5000;
+  if(!P.active){ if(now<P.next) return; P.active=true; P.start=now; P.dur=8000+Math.random()*3000; }
+  var p=(now-P.start)/P.dur;
+  if(p>=1){ P.active=false; P.dir=-P.dir; P.next=now+20000+Math.random()*10000; return; }
+  var bY=H*0.875, sz=R*0.045;
+  var x0=CX-R*0.78, x1=CX+R*0.78;
+  var x=P.dir>0?x0+(x1-x0)*p:x1-(x1-x0)*p;
+  var y=bY+R*0.02;
+  var step=now/1000*7;
+  var wob=Math.sin(step)*0.14, hop=Math.abs(Math.sin(step))*sz*0.08;
+  var fade=Math.min(1,p*8,(1-p)*8);
+  ctx.save(); ctx.globalAlpha=fade;
+  ctx.translate(x,y-hop); ctx.scale(P.dir,1); ctx.rotate(wob);
+  ctx.fillStyle='#f08a1c';
+  var fl=Math.sin(step)*sz*0.12;
+  ctx.beginPath(); ctx.ellipse(-sz*0.22+fl,0,sz*0.2,sz*0.07,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(sz*0.22-fl,0,sz*0.2,sz*0.07,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1b1d26';
+  ctx.beginPath(); ctx.ellipse(0,-sz*0.75,sz*0.5,sz*0.75,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#f4f6fb';
+  ctx.beginPath(); ctx.ellipse(sz*0.1,-sz*0.65,sz*0.33,sz*0.58,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#111319';
+  ctx.beginPath(); ctx.ellipse(-sz*0.42,-sz*0.75,sz*0.12,sz*0.4,0.25+Math.sin(step)*0.2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1b1d26';
+  ctx.beginPath(); ctx.arc(sz*0.05,-sz*1.5,sz*0.34,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#f4f6fb';
+  ctx.beginPath(); ctx.ellipse(sz*0.17,-sz*1.47,sz*0.17,sz*0.2,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.arc(sz*0.2,-sz*1.55,sz*0.05,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#f39a22';
+  ctx.beginPath(); ctx.moveTo(sz*0.32,-sz*1.5); ctx.lineTo(sz*0.55,-sz*1.43); ctx.lineTo(sz*0.32,-sz*1.38); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// 4) 圣诞袜
+function drawStockings(now){
+  var bY=H*0.875, t=now/1000;
+  var amp=0.06+(shakeActive?0.28*Math.max(0,1-(now-shakeStart)/1500):0);
+  var sz=R*0.06;
+  for(var k=0;k<2;k++){
+    var side=k?1:-1;
+    var x=CX+side*R*0.40, y=bY+R*0.035;
+    var ang=Math.sin(t*1.6+k*1.3)*amp;
+    ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.scale(side,1);
+    ctx.strokeStyle='#d8c8a0'; ctx.lineWidth=Math.max(1,sz*0.06);
+    ctx.beginPath(); ctx.moveTo(0,-sz*0.25); ctx.lineTo(0,0); ctx.stroke();
+    ctx.fillStyle='#c8202c';
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.35,sz*0.1); ctx.lineTo(-sz*0.35,sz*1.15);
+    ctx.quadraticCurveTo(-sz*0.35,sz*1.6,sz*0.1,sz*1.6);
+    ctx.lineTo(sz*0.55,sz*1.6);
+    ctx.quadraticCurveTo(sz*0.85,sz*1.6,sz*0.85,sz*1.35);
+    ctx.quadraticCurveTo(sz*0.85,sz*1.1,sz*0.5,sz*1.08);
+    ctx.lineTo(sz*0.35,sz*1.05); ctx.lineTo(sz*0.35,sz*0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=Math.max(1,sz*0.05);
+    for(var j=0;j<3;j++){ var yy=sz*(0.45+j*0.22); ctx.beginPath(); for(var q=0;q<=6;q++){ var xx=-sz*0.35+q*sz*0.117; ctx[q?'lineTo':'moveTo'](xx,yy+(q%2?sz*0.06:0)); } ctx.stroke(); }
+    ctx.fillStyle='#f3f1ea';
+    ctx.beginPath(); ctx.arc(-sz*0.18,sz*1.4,sz*0.2,Math.PI*0.5,Math.PI*1.2); ctx.lineTo(-sz*0.05,sz*1.4); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sz*0.72,sz*1.35,sz*0.14,sz*0.22,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fbfbf6';
+    ctx.beginPath(); ctx.moveTo(-sz*0.45,0); ctx.lineTo(sz*0.45,0); ctx.lineTo(sz*0.45,sz*0.3); ctx.lineTo(-sz*0.45,sz*0.3); ctx.closePath(); ctx.fill();
+    for(var m=0;m<5;m++){ ctx.beginPath(); ctx.arc(-sz*0.36+m*sz*0.18,sz*0.3,sz*0.07,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+// 5) 球体音乐呼吸（用独立 style.scale，不覆盖 .ball 的 translateX）
+var _gbScale=1, _gbEl=null;
+function applyGlobeBreath(now){
+  if(!_gbEl) _gbEl=document.querySelector('.ball');
+  if(!_gbEl) return;
+  var target=1;
+  if(musicEnergy>0.08){ target=1+0.005+0.006*musicEnergy+0.004*musicBass+0.002*Math.sin(now/1000*Math.PI*2*1.2); }
+  _gbScale+=(target-_gbScale)*0.15;
+  if(Math.abs(_gbScale-1)<0.0005 && target===1){ _gbScale=1; if(_gbEl.style.scale!==''){ _gbEl.style.scale=''; } return; }
+  _gbEl.style.transformOrigin='50% 50%';
+  _gbEl.style.scale=_gbScale.toFixed(4);
+}
+// 6) 截图导出
+function initSnapshotButton(){
+  if(document.getElementById('snapBtn')) return;
+  var b=document.createElement('button');
+  b.id='snapBtn'; b.textContent='\uD83D\uDCF8'; b.title='\u4fdd\u5b58\u622a\u56fe';
+  b.style.cssText='position:fixed;right:18px;bottom:84px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(20,30,50,.55);color:#fff;font-size:20px;cursor:pointer;z-index:9999;';
+  b.addEventListener('pointerdown',function(e){ e.stopPropagation(); });
+  b.addEventListener('click',function(e){ e.stopPropagation(); snapshotGlobe(); });
+  document.body.appendChild(b);
+}
+function snapshotGlobe(){
+  var snow=document.getElementById('snow');
+  var host=document.querySelector('.ball')||snow.parentNode;
+  var hr=host.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  var out=document.createElement('canvas');
+  out.width=Math.round(hr.width*dpr); out.height=Math.round(hr.height*dpr);
+  var o=out.getContext('2d');
+  var ids=['skycv','auroracv','treecv','snow','fogcv','glasscv'];
+  o.save();
+  o.beginPath(); o.arc(out.width/2,out.height/2,Math.min(out.width,out.height)/2,0,Math.PI*2); o.clip();
+  o.fillStyle='#0b1524'; o.fillRect(0,0,out.width,out.height);
+  for(var k=0;k<ids.length;k++){
+    var c=document.getElementById(ids[k]);
+    if(!c||!c.width) continue;
+    var cs=getComputedStyle(c);
+    if(cs.display==='none'||cs.visibility==='hidden') continue;
+    var r=c.getBoundingClientRect();
+    o.globalAlpha=parseFloat(cs.opacity)||1;
+    try{ o.drawImage(c,(r.left-hr.left)*dpr,(r.top-hr.top)*dpr,r.width*dpr,r.height*dpr); }catch(err){}
+  }
+  o.restore();
+  var d=new Date(), pad=function(n){return (n<10?'0':'')+n;};
+  var ts=d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+  out.toBlob(function(blob){
+    if(!blob) return;
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='christmas-globe-'+ts+'.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);
+  },'image/png');
+}
+
 // ===== v17 公共（小火车/拐杖糖/冰凌/小鸟/铃铛/频谱）=====
 // 1) 小火车绕树
 var trainSmoke=[], trainLastPuff=0;
@@ -3001,8 +3219,10 @@ function drawSnowmanFootprints(){
     if(accum>0.35){ accum=Math.max(0.35,accum-0.0008); if(Math.abs(accum-lastTreeAccum)>0.06) accumChanged=true; }
     if(now-lastRedraw>450 && accumChanged){ accumChanged=false; lastRedraw=now; drawTree(); }
     // v14 特效（aws-quick/smart）
+    drawOrnPulse(now);
     drawAngelFx(now);
     drawSnowmanFootprints();
+    drawPenguin(now);
     drawSnowmanBubble(now);
     drawRainDrops(now);
     // v15 特效
@@ -3016,8 +3236,11 @@ function drawSnowmanFootprints(){
     drawSnowmanBreath(now);
     drawBird(now);
     drawNorthStar(now);
+    drawTopStar(now);
+    drawStockings(now);
     drawBaseBells(now);
     drawSpectrum(now);
+    applyGlobeBreath(now);
     requestAnimationFrame(tick);
   }
   var accumChanged=false;
@@ -3305,6 +3528,10 @@ function drawSnowmanFootprints(){
       return;
     }
     if(treePendingPtrId!==null && e.pointerId===treePendingPtrId){
+      // v18 点装饰球（先于房子/树脉冲）
+      var _osp=null,_oi=-1;
+      try{ _osp=clientToSceneCoords(e.clientX, e.clientY); if(_osp) _oi=hitTestOrnament(_osp.x, _osp.y); }catch(_e){}
+      if(_oi>=0){ triggerOrnament(_oi, performance.now()); clearHold(); clearPending(); return; }
       // v16 点屋切换窗光（先于树脉冲）
       var hpt=null, hi=-1;
       try{ hpt=clientToSceneCoords(e.clientX, e.clientY); if(hpt) hi=hitTestHouse(hpt.x, hpt.y); }catch(_e){}
@@ -3335,6 +3562,7 @@ function drawSnowmanFootprints(){
   window.addEventListener('pointercancel', function(e){ handlePtrEnd(e, true); });
   // ---------- 底座铭牌切换 ----------
   var plateEl=document.getElementById('plate');
+  if(typeof initSnapshotButton==='function') initSnapshotButton();
   if(typeof xfxInitViewToggle==='function') xfxInitViewToggle();
 
   // v14 底座长按震动（aws-quick/smart）
