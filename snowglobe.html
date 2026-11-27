@@ -9,16 +9,16 @@
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; overflow:hidden; }
   body {
-    background: radial-gradient(ellipse at 50% 18%, #1e3250 0%, #101a28 48%, #060a12 100%);
+    background: linear-gradient(180deg, #7fb0e6 0%, #a9cbec 26%, #cfe3f7 50%, #eef4fd 72%, #fde7ef 100%);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     user-select:none; touch-action:manipulation;
   }
   #ambient { position:fixed; inset:0; z-index:0; pointer-events:none; }
   h1 {
-    position:relative; z-index:2; color:#ffe9b0; font-size:clamp(20px,5vw,34px); font-weight:700;
+    position:relative; z-index:2; color:#c0392b; font-size:clamp(20px,5vw,34px); font-weight:700;
     letter-spacing:.08em; margin-bottom:16px; text-align:center; padding:0 12px;
-    text-shadow:0 0 16px rgba(255,214,120,.85), 0 0 42px rgba(255,170,60,.45), 0 2px 6px rgba(0,0,0,.6);
+    text-shadow:0 1px 2px rgba(255,255,255,.7), 0 2px 8px rgba(120,20,20,.28);
   }
   .wrap { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; }
   .globe { position:relative; width:min(78vw,400px); aspect-ratio:1/1.16; -webkit-user-select:none; -webkit-touch-callout:none; user-select:none; touch-action:none; }
@@ -3993,7 +3993,8 @@ function drawSnowmanFootprints(){
   var constellation={active:false, pts:[], start:0, dur:2000, nextAt:0};
   function asize(){ AW=ac.width=innerWidth; AH=ac.height=innerHeight; }
   asize(); window.addEventListener('resize', asize);
-  for(var j=0;j<50;j++) amb.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:Math.random()*2+0.6,s:Math.random()*0.7+0.3,o:Math.random()*0.4+0.15});
+  var AMB_N=240;
+  for(var j=0;j<AMB_N;j++){ var dep=Math.random(); amb.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:0.8+dep*3.0,s:0.28+dep*1.5,o:0.4+dep*0.5,ph:Math.random()*6.283,sw:0.5+dep*1.4,dep:dep}); }
   for(var s=0;s<10;s++) stars.push({nx:0.05+Math.random()*0.9,ny:0.04+Math.random()*0.56,r:0.9+Math.random()*1.1,sp:0.0014+Math.random()*0.0022,ph:Math.random()*6.2832,o:0.28+Math.random()*0.32,c:s%3===0?'#ffe9b0':'#e6f0ff'});
   (function atick(t){ ax.clearRect(0,0,AW,AH);
     var nowA=t||0, sVis=skyState.starVis;
@@ -4021,7 +4022,7 @@ function drawSnowmanFootprints(){
       } else {
         var cp=cAge/constellation.dur;
         var cal=(cp<0.15? cp/0.15 : Math.pow(Math.max(0,(1-cp)/0.85),1.2))*0.26*sVis;
-        if(cal>0.006 && constellation.pts.length>=2){
+        if(false && cal>0.006 && constellation.pts.length>=2){
           ax.save();
           ax.globalAlpha=cal;
           ax.strokeStyle='#ffe6a3';
@@ -4036,16 +4037,23 @@ function drawSnowmanFootprints(){
         }
       }
     }
-    if(sVis>0.02){
+    if(false){
       for(var si=0;si<stars.length;si++){ var st=stars[si], tw=0.5+0.5*Math.sin((t||0)*st.sp+st.ph), sx=st.nx*AW, sy=st.ny*AH;
         ax.globalAlpha=st.o*(0.22+0.78*tw)*sVis; ax.fillStyle=st.c;
         ax.beginPath(); ax.arc(sx,sy,st.r*(0.85+0.25*tw),0,6.2832); ax.fill();
         if(tw>0.6 && st.r>1.35){ ax.strokeStyle=st.c; ax.lineWidth=0.7; var cr=st.r*(1.8+tw);
           ax.beginPath(); ax.moveTo(sx-cr,sy); ax.lineTo(sx+cr,sy); ax.moveTo(sx,sy-cr); ax.lineTo(sx,sy+cr); ax.stroke(); } }
     }
-    ax.fillStyle='#fff';
-    for(var k=0;k<amb.length;k++){ var p=amb[k]; ax.globalAlpha=p.o; ax.beginPath(); ax.arc(p.x,p.y,p.r,0,6.2832); ax.fill();
-      p.y+=p.s; p.x+=Math.sin(p.y*0.01)*0.3; if(p.y>AH+4){p.y=-4;p.x=Math.random()*AW;} }
+    var wind=Math.sin(nowA*0.00018)*0.5+0.25;
+    for(var k=0;k<amb.length;k++){ var p=amb[k];
+      p.y+=p.s; p.x+=wind*p.dep+Math.sin(nowA*0.001+p.ph)*0.3;
+      if(p.y>AH+8){ p.y=-8; p.x=Math.random()*AW; }
+      if(p.x>AW+8) p.x=-8; else if(p.x<-8) p.x=AW+8;
+      var dl=Math.sin(nowA*0.0009+p.ph)*p.sw*9;
+      var px=p.x+dl;
+      ax.globalAlpha=p.o*0.4; ax.fillStyle='#bcd4f0'; ax.beginPath(); ax.arc(px,p.y,p.r*1.7,0,6.2832); ax.fill();
+      ax.globalAlpha=p.o; ax.fillStyle='#ffffff'; ax.beginPath(); ax.arc(px,p.y,p.r,0,6.2832); ax.fill();
+    }
     ax.globalAlpha=1; requestAnimationFrame(atick); })();
   // ---------- 摇一摇 / 点击 / 长按 / 拖动倾斜 / 双指滚轮缩放 ----------
   var globe=document.getElementById('globe'), lastShake=0;
