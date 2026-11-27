@@ -351,6 +351,164 @@ function buildSnowmanFootprints(a){
 
 
 
+
+// ===== v22 公共（篝火/彩虹/流星雨/教堂/鸽群/雪人跳舞）=====
+// 1) 雪地篝火
+var campEmbers=[];
+function drawCampfire(now){
+  var bY=_sceneBY(), x=CX-R*0.32, y=bY+R*0.03, s2=R*0.05, t=now*0.001;
+  var flick=0.85+0.12*Math.sin(t*13)+0.08*Math.sin(t*7.3+1.7);
+  ctx.save();
+  var g=ctx.createRadialGradient(x,y,0,x,y,s2*4.5);
+  g.addColorStop(0,'rgba(255,150,60,'+(0.38*flick)+')');
+  g.addColorStop(0.5,'rgba(255,110,40,'+(0.12*flick)+')');
+  g.addColorStop(1,'rgba(255,90,30,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(x,y,s2*4.5,s2*1.7,0,0,Math.PI*2); ctx.fill();
+  ctx.lineCap='round'; ctx.lineWidth=s2*0.26;
+  var logs=[[-1,0.15,0.9,-0.25],[1,0.15,-0.9,-0.25],[-0.8,0.3,0.8,0.3]];
+  for(var i=0;i<logs.length;i++){ var L=logs[i];
+    ctx.strokeStyle=i===2?'#4a2c18':'#5d3a22';
+    ctx.beginPath(); ctx.moveTo(x+L[0]*s2,y+L[1]*s2); ctx.lineTo(x+L[2]*s2,y+L[3]*s2); ctx.stroke(); }
+  ctx.globalCompositeOperation='lighter';
+  function flame(h,w,c0,c1,ph,sp){
+    var sway=Math.sin(t*sp+ph)*w*0.4+Math.sin(t*sp*1.7+ph)*w*0.15;
+    var hh=h*(0.9+0.12*Math.sin(t*sp*1.3+ph));
+    var lg=ctx.createLinearGradient(x,y,x,y-hh);
+    lg.addColorStop(0,c0); lg.addColorStop(1,c1);
+    ctx.fillStyle=lg; ctx.beginPath(); ctx.moveTo(x-w,y);
+    ctx.bezierCurveTo(x-w*1.1,y-hh*0.45,x+sway-w*0.3,y-hh*0.75,x+sway,y-hh);
+    ctx.bezierCurveTo(x+sway+w*0.3,y-hh*0.75,x+w*1.1,y-hh*0.45,x+w,y);
+    ctx.closePath(); ctx.fill();
+  }
+  flame(s2*2.2,s2*0.75,'rgba(220,60,20,0.85)','rgba(255,80,20,0)',0,8);
+  flame(s2*1.6,s2*0.52,'rgba(255,140,30,0.9)','rgba(255,160,40,0)',1.3,10);
+  flame(s2*1.0,s2*0.30,'rgba(255,235,150,0.95)','rgba(255,240,180,0)',2.6,12);
+  if(campEmbers.length<8 && Math.random()<0.08)
+    campEmbers.push({t0:now,life:900+Math.random()*900,vx:(Math.random()-0.5)*s2*0.6,vy:s2*(1.2+Math.random()),ph:Math.random()*6});
+  for(var k=campEmbers.length-1;k>=0;k--){ var e=campEmbers[k], a=(now-e.t0)/e.life;
+    if(a>=1){ campEmbers.splice(k,1); continue; }
+    var ex=x+e.vx*a*2+Math.sin(a*6+e.ph)*s2*0.2, ey=y-s2*0.8-e.vy*a*2.2;
+    ctx.fillStyle='rgba(255,'+(180-a*100|0)+',60,'+(1-a)+')';
+    ctx.fillRect(ex,ey,s2*0.09,s2*0.09); }
+  ctx.restore();
+}
+// 2) 雪后彩虹弧
+var rainbowA=0;
+var RAINBOW_COLS=['255,70,70','255,150,50','255,230,80','90,210,110','80,160,255','90,90,220','170,90,220'];
+function drawRainbow(now){
+  var target=Math.max(0,Math.min(1,(accum-0.7)/0.3));
+  rainbowA+=(target-rainbowA)*0.02;
+  if(rainbowA<0.01) return;
+  var cx=CX, cy=CY+R*0.45, r0=R*0.78, bw=R*0.011, a0=Math.PI*1.12, a1=Math.PI*1.88, SEG=16;
+  var base=rainbowA*(0.18+0.04*Math.sin(now*0.0008));
+  ctx.save(); ctx.lineCap='butt'; ctx.lineWidth=bw*1.1;
+  for(var i=0;i<7;i++){ var r=r0-i*bw;
+    for(var j=0;j<SEG;j++){ var u0=j/SEG,u1=(j+1)/SEG, um=(u0+u1)/2;
+      ctx.strokeStyle='rgba('+RAINBOW_COLS[i]+','+(base*Math.sin(um*Math.PI)).toFixed(3)+')';
+      ctx.beginPath(); ctx.arc(cx,cy,r,a0+(a1-a0)*u0,a0+(a1-a0)*u1+0.002); ctx.stroke(); } }
+  ctx.restore();
+}
+// 3) 流星雨
+var showerMeteors=[], showerNextAt=0;
+function triggerMeteorShower(){
+  var now=performance.now(), n=3+(Math.random()*3|0);
+  showerMeteors.length=0;
+  for(var i=0;i<n;i++){
+    var dir=Math.random()<0.5?-1:1;
+    showerMeteors.push({ x0:CX+(Math.random()-0.5)*R*1.0, y0:CY-R*(0.55+Math.random()*0.3), dx:dir*R*(0.5+Math.random()*0.3), dy:R*(0.3+Math.random()*0.2), t0:now+i*(1500/n)+Math.random()*150, dur:700+Math.random()*400 });
+  }
+}
+function drawMeteorShower(now){
+  if(!showerNextAt) showerNextAt=now+20000+Math.random()*20000;
+  if(now>=showerNextAt){ triggerMeteorShower(); showerNextAt=now+20000+Math.random()*20000; }
+  if(!showerMeteors.length) return;
+  var vis=(skyState&&skyState.starVis!=null)?(0.4+0.6*skyState.starVis):1;
+  ctx.save(); ctx.lineCap='round';
+  for(var i=showerMeteors.length-1;i>=0;i--){ var m=showerMeteors[i], p=(now-m.t0)/m.dur;
+    if(p<0) continue; if(p>=1){ showerMeteors.splice(i,1); continue; }
+    var hx=m.x0+m.dx*p, hy=m.y0+m.dy*p, tp=Math.max(0,p-0.28);
+    var tx=m.x0+m.dx*tp, ty=m.y0+m.dy*tp, a=Math.sin(p*Math.PI)*vis;
+    var g=ctx.createLinearGradient(tx,ty,hx,hy);
+    g.addColorStop(0,'rgba(200,220,255,0)'); g.addColorStop(1,'rgba(255,255,255,'+a+')');
+    ctx.strokeStyle=g; ctx.lineWidth=R*0.006;
+    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx,hy); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,'+a+')'; ctx.beginPath(); ctx.arc(hx,hy,R*0.005,0,Math.PI*2); ctx.fill(); }
+  ctx.restore();
+}
+// 4) 远景教堂剪影（画在极光层 actx）
+function drawChurchSilhouette(actx){
+  var t=performance.now()*0.001, s2=R*0.055, x=CX-R*0.55, gy=H*0.80;
+  var lum=0.85+0.08*Math.sin(t*0.4)+0.05*Math.sin(t*0.93);
+  var c='rgba('+(12*lum|0)+','+(18*lum|0)+','+(34*lum|0)+',0.9)';
+  actx.save(); actx.fillStyle=c;
+  actx.fillRect(x-s2*1.1,gy-s2*1.0,s2*1.6,s2*1.0);
+  actx.beginPath(); actx.moveTo(x-s2*1.2,gy-s2*1.0); actx.lineTo(x-s2*0.3,gy-s2*1.6); actx.lineTo(x+s2*0.6,gy-s2*1.0); actx.fill();
+  actx.fillRect(x+s2*0.5,gy-s2*2.0,s2*0.6,s2*2.0);
+  actx.beginPath(); actx.moveTo(x+s2*0.42,gy-s2*2.0); actx.lineTo(x+s2*0.8,gy-s2*3.0); actx.lineTo(x+s2*1.18,gy-s2*2.0); actx.fill();
+  actx.fillRect(x+s2*0.78,gy-s2*3.45,s2*0.05,s2*0.45);
+  actx.fillRect(x+s2*0.66,gy-s2*3.32,s2*0.28,s2*0.05);
+  actx.fillStyle='rgba(255,190,110,'+(0.18*lum)+')';
+  actx.fillRect(x+s2*0.72,gy-s2*1.6,s2*0.16,s2*0.25);
+  actx.fillRect(x-s2*0.5,gy-s2*0.7,s2*0.14,s2*0.3);
+  actx.restore();
+}
+// 5) 鸽群
+var doveFlock=null, doveNextAt=0;
+function drawDoveFlock(now){
+  if(!doveNextAt) doveNextAt=now+25000+Math.random()*20000;
+  if(!doveFlock && now>=doveNextAt){
+    var n=3+(Math.random()*3|0), dir=Math.random()<0.5?1:-1, mem=[];
+    for(var i=0;i<n;i++){ var k=Math.ceil(i/2), side=(i%2?1:-1);
+      mem.push({ox:-dir*k*R*0.07+(Math.random()-0.5)*R*0.02, oy:side*k*R*0.045+(Math.random()-0.5)*R*0.015, ph:Math.random()*6}); }
+    doveFlock={t0:now,dur:7000+Math.random()*2500,dir:dir,y:CY-R*(0.2+Math.random()*0.25),m:mem};
+  }
+  if(!doveFlock) return;
+  var F=doveFlock, p=(now-F.t0)/F.dur;
+  if(p>=1){ doveFlock=null; doveNextAt=now+25000+Math.random()*20000; return; }
+  var lx=CX-F.dir*R*1.15+F.dir*R*2.3*p, ly=F.y+Math.sin(p*Math.PI*2)*R*0.04, s2=R*0.018;
+  ctx.save(); ctx.lineCap='round'; ctx.lineWidth=s2*0.35;
+  for(var i=0;i<F.m.length;i++){ var b=F.m[i];
+    var x=lx+b.ox, y=ly+b.oy+Math.sin(now*0.003+b.ph)*s2*0.6;
+    var a=Math.max(0,Math.min(1,(R*0.95-Math.abs(x-CX))/(R*0.25)));
+    if(a<=0) continue;
+    var fl=Math.sin(now*0.014+b.ph)*s2*1.1;
+    ctx.globalAlpha=a*0.9; ctx.strokeStyle='#f4f6fb'; ctx.fillStyle='#f4f6fb';
+    ctx.beginPath(); ctx.ellipse(x,y,s2*0.75,s2*0.35,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x+F.dir*s2*0.7,y-s2*0.15,s2*0.25,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x-s2*1.3,y-fl); ctx.quadraticCurveTo(x-s2*0.5,y-fl*0.6-s2*0.3,x,y);
+    ctx.quadraticCurveTo(x+s2*0.5,y-fl*0.6-s2*0.3,x+s2*1.3,y-fl); ctx.stroke(); }
+  ctx.restore();
+}
+// 6) 双击雪人跳舞
+var snowDanceStart=0, SNOW_DANCE_MS=1500, lastSnowTapAt=0, lastSnowTapX=0, lastSnowTapY=0;
+var SNOW_NOTES=['\u266A','\u266B','\u266A','\u266C'];
+function triggerSnowmanDance(){
+  snowDanceStart=performance.now();
+  if(typeof snowmanBounceStart!=='undefined'){ snowmanBounceStart=snowDanceStart; snowmanBounceActive=true; }
+}
+function drawSnowmanDance(now){
+  if(!snowDanceStart) return;
+  var p=(now-snowDanceStart)/SNOW_DANCE_MS;
+  if(p>=1){ snowDanceStart=0; return; }
+  var tH=_sceneTH(), bY=_sceneBY(), sx=W/2+tH*0.415, sy=bY+tH*0.045, sc=tH*0.095;
+  var fade=Math.sin(p*Math.PI), hop=Math.abs(Math.sin(p*Math.PI*4))*sc*0.3*(1-p*0.5);
+  var cy=sy-sc*1.1-hop, rot=p*Math.PI*4;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,240,190,'+(0.45*fade)+')'; ctx.lineWidth=sc*0.05;
+  ctx.beginPath(); ctx.ellipse(sx,cy,sc*(1.1+0.15*Math.sin(p*25)),sc*1.5,0,0,Math.PI*2); ctx.stroke();
+  for(var i=0;i<6;i++){ var a=rot+i*Math.PI/3, front=(Math.sin(a)+1)/2;
+    ctx.fillStyle='rgba(255,255,220,'+(fade*(0.25+0.75*front))+')';
+    ctx.beginPath(); ctx.arc(sx+Math.cos(a)*sc*1.2,cy+Math.sin(a)*sc*0.3+sc*0.6,sc*(0.04+0.05*front),0,Math.PI*2); ctx.fill(); }
+  ctx.fillStyle='rgba(40,50,80,'+(0.18*fade)+')';
+  ctx.beginPath(); ctx.ellipse(sx,sy,sc*(0.9-hop/sc*0.5),sc*0.15,0,0,Math.PI*2); ctx.fill();
+  ctx.font=(sc*0.5|0)+'px serif'; ctx.textAlign='center';
+  for(var k=0;k<4;k++){ var q=p*1.3-k*0.15; if(q<0||q>1) continue;
+    var ang=-Math.PI*0.5+(k-1.5)*0.6;
+    ctx.fillStyle='rgba(255,230,120,'+(1-q)+')';
+    ctx.fillText(SNOW_NOTES[k],sx+Math.cos(ang)*sc*(0.8+q*0.8)+Math.sin(q*10+k)*sc*0.1,cy-sc*0.8-q*sc*1.4); }
+  ctx.restore();
+}
+
 // ===== v21 公共（圣诞老人/小兔/微摆/提灯/闪光点/蝴蝶结）=====
 function _clamp01(v){ return v<0?0:(v>1?1:v); }
 function _ease(t){ t=_clamp01(t); return t*t*(3-2*t); }
@@ -2857,6 +3015,7 @@ function drawSnowmanFootprints(){
     actx.globalAlpha=1;
     // 远景模糊雪山剪影（位于树后、极光下）+ 远山前方地平线冷蓝雾带（水平渐变）
     actx.drawImage(mountainLayer,0,0);
+    try{ drawChurchSilhouette(actx); }catch(_e){}
     actx.drawImage(horizonMistLayer,0,H*0.72,W,H*0.18);
     // 雪地上的极光柔和倒影（垂直压扁径向渐变，低透明）
     var gx=CX+refSx*0.45-tiltX*0.24, gy=H*(0.888-ex*0.011), grx=W*(0.40+ex*0.03), gry=H*(0.075+ex*0.022);
@@ -3786,15 +3945,18 @@ function drawSnowmanFootprints(){
     drawDeer(now);
     drawOrnPulse(now);
     drawAngelFx(now);
+    drawRainbow(now);
     drawSnowmanFootprints();
     drawSnowSparkles(now);
     drawSnowPiles(now);
+    drawCampfire(now);
     drawCat(now);
     drawBunny(now);
     drawPenguin(now);
     drawDoorLanterns(now);
     if(chimneys && chimneys.length>1) drawSantaChimney(now);
     drawSnowmanBubble(now);
+    drawSnowmanDance(now);
     drawRainDrops(now);
     // v15 特效
     xfxViewUpdate(now);
@@ -3806,7 +3968,9 @@ function drawSnowmanFootprints(){
     drawMusicNotes(now);
     drawSnowmanBreath(now);
     drawBird(now);
+    drawDoveFlock(now);
     drawNorthStar(now);
+    drawMeteorShower(now);
     drawTopBow(now);
     drawTopStar(now);
     drawWishStars(now);
@@ -4105,6 +4269,12 @@ function drawSnowmanFootprints(){
     }
     if(snowmanPendingPtrId!==null && e.pointerId===snowmanPendingPtrId){
       clearHold(); clearPending();
+      // v22 双击雪人跳舞（否则单击换装）
+      var _sNow=performance.now();
+      if(_sNow-lastSnowTapAt<DBL_TAP_MS && Math.abs(e.clientX-lastSnowTapX)<32 && Math.abs(e.clientY-lastSnowTapY)<32){
+        lastSnowTapAt=0; triggerSnowmanDance(); return;
+      }
+      lastSnowTapAt=_sNow; lastSnowTapX=e.clientX; lastSnowTapY=e.clientY;
       if(snowmanProg>=1 && snowmanTarget===1){
         snowmanOutfit=(snowmanOutfit+1)%snowmanOutfits.length;
         snowmanBounceStart=performance.now();
